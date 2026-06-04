@@ -1,5 +1,6 @@
 //! obol-core: parse agent transcripts and estimate token cost.
 
+pub mod cost;
 pub mod error;
 pub mod model;
 pub mod pricing;
