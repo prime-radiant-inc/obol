@@ -1,9 +1,7 @@
 //! obol-core: parse agent transcripts and estimate token cost.
 
-#[cfg(test)]
-mod smoke {
-    #[test]
-    fn builds() {
-        assert_eq!(2 + 2, 4);
-    }
-}
+pub mod error;
+pub mod model;
+
+pub use error::ObolError;
+pub use model::{Approximation, CostEstimate, MessageUsage, ModelCost, Provider, TokenBuckets};
