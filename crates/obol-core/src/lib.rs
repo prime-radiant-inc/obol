@@ -2,6 +2,7 @@
 
 pub mod error;
 pub mod model;
+pub mod pricing;
 
 pub use error::ObolError;
 pub use model::{Approximation, CostEstimate, MessageUsage, ModelCost, Provider, TokenBuckets};
