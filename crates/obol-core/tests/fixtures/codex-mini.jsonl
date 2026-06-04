@@ -1,0 +1,5 @@
+{"type":"session_meta","payload":{"id":"abc","cwd":"/tmp","model":null,"model_provider":"openai"}}
+{"type":"turn_context","payload":{"model":"gpt-5.5"}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":800,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":1050}}}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":800,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":1050}}}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":2000,"cached_input_tokens":1900,"output_tokens":80,"reasoning_output_tokens":0,"total_tokens":2080}}}}
