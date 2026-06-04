@@ -35,7 +35,7 @@ pub struct ModelPrice {
 pub fn cost_for(price: &ModelPrice, u: &MessageUsage) -> f64 {
     let above = price
         .tier_boundary
-        .map_or(false, |b| u.request_input_tokens > b);
+        .is_some_and(|b| u.request_input_tokens > b);
     let pick = |base: f64, over: Option<f64>| if above { over.unwrap_or(base) } else { base };
 
     let r_in = pick(price.input, price.input_above);
