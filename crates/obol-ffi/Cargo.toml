@@ -1,0 +1,15 @@
+[package]
+name = "obol-ffi"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+obol-core = { path = "../obol-core" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+cbindgen = "0.27"

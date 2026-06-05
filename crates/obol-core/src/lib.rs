@@ -20,7 +20,7 @@ pub enum Source<'a> {
 }
 
 /// Report from a pricing refresh.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct RefreshReport {
     pub models: usize,
     pub as_of: String,
@@ -112,5 +112,14 @@ mod api_tests {
 
         std::fs::remove_dir_all(&dir).ok();
         std::env::remove_var("OBOL_PRICING_DIR");
+    }
+
+    #[test]
+    fn refresh_report_serializes() {
+        let r = RefreshReport { models: 7, as_of: "2026-06-05".into(), written_to: "/x/current.json".into() };
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["models"], 7);
+        assert_eq!(v["as_of"], "2026-06-05");
+        assert_eq!(v["written_to"], "/x/current.json");
     }
 }
