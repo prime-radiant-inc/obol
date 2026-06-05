@@ -75,7 +75,7 @@ path-as-string.
 
 ## The C ABI surface
 
-Six functions. Signatures below show the **C types cbindgen will actually emit** — note
+Five functions. Signatures below show the **C types cbindgen will actually emit** — note
 `uintptr_t` for the Rust `usize` (cbindgen maps `usize → uintptr_t`, not `size_t`; ABI-
 identical, and we avoid a `libc` dependency just to rename it). The committed header is
 whatever cbindgen produces, and the drift test enforces exactly that, so this sample is kept

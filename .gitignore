@@ -1,2 +1,6 @@
 /target
 /.pricing
+
+# Go binding build artifacts (compiled by `go build`)
+/bindings/go/total
+/bindings/go/cmd/total/total

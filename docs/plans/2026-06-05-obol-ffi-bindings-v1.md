@@ -658,7 +658,7 @@ mise exec rust@1.96.0 -- cargo run -q -p obol-ffi --example gen_header
 Make it executable: `chmod +x scripts/gen-header.sh`.
 
 - [ ] **Step 4: Generate the header.** Run `./scripts/gen-header.sh` and open
-  `crates/obol-ffi/include/obol.h`. Verify it declares all six functions with
+  `crates/obol-ffi/include/obol.h`. Verify it declares all five functions with
   `int32_t`/`uintptr_t`/`*const char`/`char**`/`const char*` types and the `OBOL_H` guard.
   (cbindgen 0.27 emits `uintptr_t` for `usize` — not `size_t`. That's expected and matches the
   spec; the Go binding's `C.uintptr_t` aligns with it.)
