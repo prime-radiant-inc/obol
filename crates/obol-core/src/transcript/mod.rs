@@ -10,6 +10,7 @@ use serde_json::Value;
 pub enum Dialect {
     Claude,
     Codex,
+    Pi,
 }
 
 /// Detect dialect from content: Codex lines carry a top-level `payload`
@@ -29,6 +30,9 @@ pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
         if v.get("payload").is_some() {
             return Ok(Dialect::Codex);
         }
+        if v.get("type").and_then(Value::as_str) == Some("session") {
+            return Ok(Dialect::Pi);
+        }
         let ty = v.get("type").and_then(Value::as_str);
         if matches!(ty, Some("user") | Some("assistant")) && v.get("message").is_some() {
             return Ok(Dialect::Claude);
@@ -41,6 +45,7 @@ pub fn parse(bytes: &[u8], dialect: Dialect) -> Result<Vec<MessageUsage>, ObolEr
     match dialect {
         Dialect::Claude => Ok(claude::parse(bytes)?.usages),
         Dialect::Codex => codex::parse(bytes),
+        Dialect::Pi => pi::parse(bytes),
     }
 }
 
@@ -54,6 +59,12 @@ mod tests {
         let codex = include_bytes!("../../tests/fixtures/codex-mini.jsonl");
         assert_eq!(detect(claude).unwrap(), Dialect::Claude);
         assert_eq!(detect(codex).unwrap(), Dialect::Codex);
+    }
+
+    #[test]
+    fn detects_pi() {
+        let pi = include_bytes!("../../tests/fixtures/pi-mini.jsonl");
+        assert_eq!(detect(pi).unwrap(), Dialect::Pi);
     }
 
     #[test]
