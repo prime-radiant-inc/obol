@@ -46,6 +46,64 @@ pub extern "C" fn obol_string_free(s: *mut c_char) {
     unsafe { drop(CString::from_raw(s)) };
 }
 
+fn code_and_kind(e: &ObolError) -> (i32, &'static str) {
+    match e {
+        ObolError::PricingTablesMissing(_) => (ERR_PRICING_MISSING, "PricingTablesMissing"),
+        ObolError::UnknownDialect => (ERR_UNKNOWN_DIALECT, "UnknownDialect"),
+        ObolError::MalformedTranscript { .. } => (ERR_MALFORMED, "MalformedTranscript"),
+        ObolError::Network(_) => (ERR_NETWORK, "Network"),
+        ObolError::Io(_) => (ERR_IO, "Io"),
+        ObolError::Json(_) => (ERR_JSON, "Json"),
+    }
+}
+
+fn envelope(code: i32, kind: &str, message: &str) -> String {
+    serde_json::json!({ "error": { "code": code, "kind": kind, "message": message } }).to_string()
+}
+
+/// Write `s` into `*out` as an obol-owned C string. Assumes `out` is non-NULL.
+/// Returns true on success; false only if `s` contains an interior NUL (impossible for
+/// serde_json output, which escapes NUL) — in which case `*out` is left NULL.
+unsafe fn write_out(out: *mut *mut c_char, s: String) -> bool {
+    match CString::new(s) {
+        Ok(c) => {
+            *out = c.into_raw();
+            true
+        }
+        Err(_) => {
+            *out = ptr::null_mut();
+            false
+        }
+    }
+}
+
+/// Write an error envelope and return its code. Assumes `out` is non-NULL.
+unsafe fn fail(out: *mut *mut c_char, code: i32, kind: &str, msg: &str) -> i32 {
+    write_out(out, envelope(code, kind, msg));
+    code
+}
+
+/// Turn a core result into (envelope-or-result written to `out`, status code).
+/// Assumes `out` is non-NULL.
+unsafe fn finish<T: serde::Serialize>(out: *mut *mut c_char, r: Result<T, ObolError>) -> i32 {
+    match r {
+        Ok(value) => match serde_json::to_string(&value) {
+            Ok(json) => {
+                if write_out(out, json) {
+                    OK
+                } else {
+                    fail(out, ERR_JSON, "Json", "result contained an interior NUL")
+                }
+            }
+            Err(e) => fail(out, ERR_JSON, "Json", &e.to_string()),
+        },
+        Err(e) => {
+            let (code, kind) = code_and_kind(&e);
+            fail(out, code, kind, &e.to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,5 +120,25 @@ mod tests {
     #[test]
     fn string_free_null_is_noop() {
         obol_string_free(std::ptr::null_mut()); // must not crash
+    }
+
+    #[test]
+    fn maps_obol_errors_to_codes() {
+        use obol_core::ObolError;
+        assert_eq!(code_and_kind(&ObolError::UnknownDialect), (ERR_UNKNOWN_DIALECT, "UnknownDialect"));
+        assert_eq!(
+            code_and_kind(&ObolError::MalformedTranscript { line: 1, msg: "x".into() }).0,
+            ERR_MALFORMED
+        );
+        assert_eq!(code_and_kind(&ObolError::Network("x".into())), (ERR_NETWORK, "Network"));
+    }
+
+    #[test]
+    fn envelope_is_valid_json_with_fields() {
+        let s = envelope(ERR_MALFORMED, "MalformedTranscript", "bad: \"quote\"");
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["error"]["code"], ERR_MALFORMED);
+        assert_eq!(v["error"]["kind"], "MalformedTranscript");
+        assert_eq!(v["error"]["message"], "bad: \"quote\"");
     }
 }
