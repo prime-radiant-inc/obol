@@ -6,8 +6,10 @@ use crate::model::{MessageUsage, Provider};
 use serde_json::Value;
 
 pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
-    let text = std::str::from_utf8(bytes)
-        .map_err(|e| ObolError::MalformedTranscript { line: 0, msg: e.to_string() })?;
+    let text = std::str::from_utf8(bytes).map_err(|e| ObolError::MalformedTranscript {
+        line: 0,
+        msg: e.to_string(),
+    })?;
     let mut out = Vec::new();
     let mut current_model = String::new();
 
@@ -43,12 +45,19 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
 
         let g = |k: &str| usage.get(k).and_then(Value::as_u64);
         let nested = |outer: &str, inner: &str| {
-            usage.get(outer).and_then(|c| c.get(inner)).and_then(Value::as_u64)
+            usage
+                .get(outer)
+                .and_then(|c| c.get(inner))
+                .and_then(Value::as_u64)
         };
         let input = g("input").unwrap_or(0);
         let output = g("output").unwrap_or(0);
-        let cache_read = g("cacheRead").or_else(|| nested("cache", "read")).unwrap_or(0);
-        let cache_write = g("cacheWrite").or_else(|| nested("cache", "write")).unwrap_or(0);
+        let cache_read = g("cacheRead")
+            .or_else(|| nested("cache", "read"))
+            .unwrap_or(0);
+        let cache_write = g("cacheWrite")
+            .or_else(|| nested("cache", "write"))
+            .unwrap_or(0);
 
         let provider_str = msg.get("provider").and_then(Value::as_str).unwrap_or("");
         let (namespace, provider) = route(provider_str);

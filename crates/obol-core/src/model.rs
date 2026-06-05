@@ -29,7 +29,7 @@ impl serde::Serialize for Provider {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct TokenBuckets {
-    pub input: u64,       // uncached input
+    pub input: u64, // uncached input
     pub output: u64,
     pub cache_read: u64,
     pub cache_write: u64, // 5m + 1h combined, for the summary
@@ -65,9 +65,9 @@ pub struct CostEstimate {
 /// parsers, consumed by the cost engine.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessageUsage {
-    pub model: String,        // verbatim; empty string == unknown (e.g. Codex cleared turn_context)
+    pub model: String, // verbatim; empty string == unknown (e.g. Codex cleared turn_context)
     pub provider: Provider,
-    pub namespace: String,    // "litellm" in v1
+    pub namespace: String, // "litellm" in v1
     pub input_uncached: u64,
     pub cache_read: u64,
     pub cache_write_5m: u64,
@@ -83,9 +83,18 @@ mod tests {
 
     #[test]
     fn provider_serializes_as_lowercase_string() {
-        assert_eq!(serde_json::to_value(Provider::OpenRouter).unwrap(), serde_json::json!("openrouter"));
-        assert_eq!(serde_json::to_value(Provider::Other("bedrock".into())).unwrap(), serde_json::json!("bedrock"));
-        assert_eq!(serde_json::to_value(Provider::OpenAI).unwrap(), serde_json::json!("openai"));
+        assert_eq!(
+            serde_json::to_value(Provider::OpenRouter).unwrap(),
+            serde_json::json!("openrouter")
+        );
+        assert_eq!(
+            serde_json::to_value(Provider::Other("bedrock".into())).unwrap(),
+            serde_json::json!("bedrock")
+        );
+        assert_eq!(
+            serde_json::to_value(Provider::OpenAI).unwrap(),
+            serde_json::json!("openai")
+        );
     }
 
     #[test]

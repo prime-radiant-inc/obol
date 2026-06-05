@@ -49,13 +49,19 @@ pub fn estimate_cost(source: Source, dialect: Option<Dialect>) -> Result<CostEst
 pub fn refresh_pricing_tables(as_of: &str) -> Result<RefreshReport, ObolError> {
     let mut store = pricing::refresh::fetch_litellm(as_of)?; // {litellm: …}
     let openrouter = pricing::refresh::fetch_openrouter()?;
-    store.namespaces.insert("openrouter".to_string(), openrouter);
+    store
+        .namespaces
+        .insert("openrouter".to_string(), openrouter);
     let models: usize = store.namespaces.values().map(|m| m.len()).sum();
     let dir = pricing::pricing_dir();
     store.save(&dir.join(format!("prices-{as_of}.json")))?;
     let current = pricing::current_path();
     store.save(&current)?;
-    Ok(RefreshReport { models, as_of: as_of.to_string(), written_to: current })
+    Ok(RefreshReport {
+        models,
+        as_of: as_of.to_string(),
+        written_to: current,
+    })
 }
 
 #[cfg(test)]
@@ -106,7 +112,11 @@ mod api_tests {
         // Write the Claude fixture to a real file and price it via Source::Path
         // with NO dialect hint — exercises both the path input and auto-detect.
         let transcript = dir.join("session.jsonl");
-        std::fs::write(&transcript, include_bytes!("../tests/fixtures/claude-mini.jsonl")).unwrap();
+        std::fs::write(
+            &transcript,
+            include_bytes!("../tests/fixtures/claude-mini.jsonl"),
+        )
+        .unwrap();
         let est = estimate_cost(Source::Path(&transcript), None).unwrap();
         assert!(est.total_usd > 0.0);
 
@@ -116,7 +126,11 @@ mod api_tests {
 
     #[test]
     fn refresh_report_serializes() {
-        let r = RefreshReport { models: 7, as_of: "2026-06-05".into(), written_to: "/x/current.json".into() };
+        let r = RefreshReport {
+            models: 7,
+            as_of: "2026-06-05".into(),
+            written_to: "/x/current.json".into(),
+        };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v["models"], 7);
         assert_eq!(v["as_of"], "2026-06-05");

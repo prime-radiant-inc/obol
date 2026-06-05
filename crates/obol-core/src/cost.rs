@@ -36,12 +36,14 @@ pub fn estimate(usages: &[MessageUsage], store: &PriceStore) -> CostEstimate {
         };
         total_usd += subtotal;
 
-        let entry = per_model.entry(u.model.clone()).or_insert_with(|| ModelCost {
-            model: u.model.clone(),
-            provider: u.provider.clone(),
-            tokens: TokenBuckets::default(),
-            subtotal_usd: 0.0,
-        });
+        let entry = per_model
+            .entry(u.model.clone())
+            .or_insert_with(|| ModelCost {
+                model: u.model.clone(),
+                provider: u.provider.clone(),
+                tokens: TokenBuckets::default(),
+                subtotal_usd: 0.0,
+            });
         entry.tokens.input += u.input_uncached;
         entry.tokens.output += u.output;
         entry.tokens.cache_read += u.cache_read;

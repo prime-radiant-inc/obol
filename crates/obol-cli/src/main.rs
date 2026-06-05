@@ -31,7 +31,11 @@ enum Cmd {
 fn run() -> Result<(), String> {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::Estimate { path, dialect, json } => {
+        Cmd::Estimate {
+            path,
+            dialect,
+            json,
+        } => {
             let hint = dialect.as_deref().map(|d| match d {
                 "claude" => Dialect::Claude,
                 "codex" => Dialect::Codex,
@@ -39,21 +43,34 @@ fn run() -> Result<(), String> {
             });
             let est = estimate_cost(Source::Path(&path), hint).map_err(|e| e.to_string())?;
             if json {
-                println!("{}", serde_json::to_string_pretty(&est).map_err(|e| e.to_string())?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&est).map_err(|e| e.to_string())?
+                );
             } else {
-                println!("total: ${:.4}  (pricing as of {})", est.total_usd, est.pricing_as_of);
+                println!(
+                    "total: ${:.4}  (pricing as of {})",
+                    est.total_usd, est.pricing_as_of
+                );
                 for m in &est.per_model {
                     println!("  {:30} ${:.4}", m.model, m.subtotal_usd);
                 }
                 if !est.unpriced_models.is_empty() {
-                    println!("  unpriced (run `obol refresh`?): {}", est.unpriced_models.join(", "));
+                    println!(
+                        "  unpriced (run `obol refresh`?): {}",
+                        est.unpriced_models.join(", ")
+                    );
                 }
             }
             Ok(())
         }
         Cmd::Refresh { as_of } => {
             let r = refresh_pricing_tables(&as_of).map_err(|e| e.to_string())?;
-            println!("refreshed {} models -> {}", r.models, r.written_to.display());
+            println!(
+                "refreshed {} models -> {}",
+                r.models,
+                r.written_to.display()
+            );
             Ok(())
         }
     }

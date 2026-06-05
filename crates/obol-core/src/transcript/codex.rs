@@ -6,8 +6,10 @@ use crate::model::{MessageUsage, Provider};
 use serde_json::Value;
 
 pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
-    let text = std::str::from_utf8(bytes)
-        .map_err(|e| ObolError::MalformedTranscript { line: 0, msg: e.to_string() })?;
+    let text = std::str::from_utf8(bytes).map_err(|e| ObolError::MalformedTranscript {
+        line: 0,
+        msg: e.to_string(),
+    })?;
 
     let mut current_model = String::new();
     let mut last_raw: Option<String> = None;
@@ -27,7 +29,11 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
 
         if ty == "turn_context" {
             // updates running model; empty string CLEARS it
-            current_model = payload.get("model").and_then(Value::as_str).unwrap_or("").to_string();
+            current_model = payload
+                .get("model")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             continue;
         }
         if ty != "event_msg" || payload.get("type").and_then(Value::as_str) != Some("token_count") {

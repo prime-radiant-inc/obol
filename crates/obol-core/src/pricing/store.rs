@@ -79,7 +79,10 @@ mod tests {
         );
         let mut namespaces = HashMap::new();
         namespaces.insert("litellm".to_string(), litellm);
-        PriceStore { as_of: "2026-06-04".into(), namespaces }
+        PriceStore {
+            as_of: "2026-06-04".into(),
+            namespaces,
+        }
     }
 
     #[test]

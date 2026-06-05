@@ -65,7 +65,10 @@ pub fn normalize_litellm(bytes: &[u8], as_of: &str) -> Result<PriceStore, ObolEr
     }
     let mut namespaces = HashMap::new();
     namespaces.insert("litellm".to_string(), litellm);
-    Ok(PriceStore { as_of: as_of.to_string(), namespaces })
+    Ok(PriceStore {
+        as_of: as_of.to_string(),
+        namespaces,
+    })
 }
 
 /// Fetch the live sheet over HTTP. `as_of` is supplied by the caller (the lib
@@ -97,7 +100,11 @@ pub fn normalize_openrouter(bytes: &[u8]) -> Result<HashMap<String, ModelPrice>,
             Some(p) => p,
             None => continue,
         };
-        let f = |k: &str| p.get(k).and_then(Value::as_str).and_then(|s| s.parse::<f64>().ok());
+        let f = |k: &str| {
+            p.get(k)
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<f64>().ok())
+        };
         let (prompt, completion) = match (f("prompt"), f("completion")) {
             (Some(a), Some(b)) => (a, b),
             _ => continue,
@@ -172,7 +179,10 @@ mod tests {
 
     #[test]
     fn normalizes_openrouter_per_million_no_tiers() {
-        let t = normalize_openrouter(include_bytes!("../../tests/fixtures/openrouter-sample.json")).unwrap();
+        let t = normalize_openrouter(include_bytes!(
+            "../../tests/fixtures/openrouter-sample.json"
+        ))
+        .unwrap();
         let opus = t.get("anthropic/claude-opus-4.8").unwrap();
         assert!((opus.input - 5.0).abs() < 1e-9);
         assert!((opus.output - 25.0).abs() < 1e-9);

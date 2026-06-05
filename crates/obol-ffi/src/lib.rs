@@ -115,7 +115,9 @@ fn parse_dialect(dialect: *const c_char) -> Result<Option<Dialect>, ()> {
     if dialect.is_null() {
         return Ok(None);
     }
-    let s = unsafe { CStr::from_ptr(dialect) }.to_str().map_err(|_| ())?;
+    let s = unsafe { CStr::from_ptr(dialect) }
+        .to_str()
+        .map_err(|_| ())?;
     match s {
         "claude" => Ok(Some(Dialect::Claude)),
         "codex" => Ok(Some(Dialect::Codex)),
@@ -138,12 +140,22 @@ pub extern "C" fn obol_estimate_bytes(
     unsafe { *out_json = ptr::null_mut() };
     let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         if data.is_null() {
-            return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "data pointer is NULL");
+            return fail(
+                out_json,
+                ERR_INVALID_ARG,
+                "InvalidArgument",
+                "data pointer is NULL",
+            );
         }
         let dialect = match parse_dialect(dialect) {
             Ok(d) => d,
             Err(()) => {
-                return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "unknown or invalid dialect string");
+                return fail(
+                    out_json,
+                    ERR_INVALID_ARG,
+                    "InvalidArgument",
+                    "unknown or invalid dialect string",
+                );
             }
         };
         let bytes = std::slice::from_raw_parts(data, len);
@@ -151,7 +163,14 @@ pub extern "C" fn obol_estimate_bytes(
     }));
     match result {
         Ok(code) => code,
-        Err(_) => unsafe { fail(out_json, ERR_PANIC, "Panic", "internal panic caught at FFI boundary") },
+        Err(_) => unsafe {
+            fail(
+                out_json,
+                ERR_PANIC,
+                "Panic",
+                "internal panic caught at FFI boundary",
+            )
+        },
     }
 }
 
@@ -168,23 +187,50 @@ pub extern "C" fn obol_estimate_path(
     unsafe { *out_json = ptr::null_mut() };
     let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         if path.is_null() {
-            return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "path pointer is NULL");
+            return fail(
+                out_json,
+                ERR_INVALID_ARG,
+                "InvalidArgument",
+                "path pointer is NULL",
+            );
         }
         let path = match CStr::from_ptr(path).to_str() {
             Ok(s) => s,
-            Err(_) => return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "path is not valid UTF-8"),
+            Err(_) => {
+                return fail(
+                    out_json,
+                    ERR_INVALID_ARG,
+                    "InvalidArgument",
+                    "path is not valid UTF-8",
+                )
+            }
         };
         let dialect = match parse_dialect(dialect) {
             Ok(d) => d,
             Err(()) => {
-                return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "unknown or invalid dialect string");
+                return fail(
+                    out_json,
+                    ERR_INVALID_ARG,
+                    "InvalidArgument",
+                    "unknown or invalid dialect string",
+                );
             }
         };
-        finish(out_json, estimate_cost(Source::Path(Path::new(path)), dialect))
+        finish(
+            out_json,
+            estimate_cost(Source::Path(Path::new(path)), dialect),
+        )
     }));
     match result {
         Ok(code) => code,
-        Err(_) => unsafe { fail(out_json, ERR_PANIC, "Panic", "internal panic caught at FFI boundary") },
+        Err(_) => unsafe {
+            fail(
+                out_json,
+                ERR_PANIC,
+                "Panic",
+                "internal panic caught at FFI boundary",
+            )
+        },
     }
 }
 
@@ -197,17 +243,36 @@ pub extern "C" fn obol_refresh_pricing(as_of: *const c_char, out_json: *mut *mut
     unsafe { *out_json = ptr::null_mut() };
     let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         if as_of.is_null() {
-            return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "as_of pointer is NULL");
+            return fail(
+                out_json,
+                ERR_INVALID_ARG,
+                "InvalidArgument",
+                "as_of pointer is NULL",
+            );
         }
         let as_of = match CStr::from_ptr(as_of).to_str() {
             Ok(s) => s,
-            Err(_) => return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "as_of is not valid UTF-8"),
+            Err(_) => {
+                return fail(
+                    out_json,
+                    ERR_INVALID_ARG,
+                    "InvalidArgument",
+                    "as_of is not valid UTF-8",
+                )
+            }
         };
         finish(out_json, refresh_pricing_tables(as_of))
     }));
     match result {
         Ok(code) => code,
-        Err(_) => unsafe { fail(out_json, ERR_PANIC, "Panic", "internal panic caught at FFI boundary") },
+        Err(_) => unsafe {
+            fail(
+                out_json,
+                ERR_PANIC,
+                "Panic",
+                "internal panic caught at FFI boundary",
+            )
+        },
     }
 }
 
@@ -232,12 +297,22 @@ mod tests {
     #[test]
     fn maps_obol_errors_to_codes() {
         use obol_core::ObolError;
-        assert_eq!(code_and_kind(&ObolError::UnknownDialect), (ERR_UNKNOWN_DIALECT, "UnknownDialect"));
         assert_eq!(
-            code_and_kind(&ObolError::MalformedTranscript { line: 1, msg: "x".into() }).0,
+            code_and_kind(&ObolError::UnknownDialect),
+            (ERR_UNKNOWN_DIALECT, "UnknownDialect")
+        );
+        assert_eq!(
+            code_and_kind(&ObolError::MalformedTranscript {
+                line: 1,
+                msg: "x".into()
+            })
+            .0,
             ERR_MALFORMED
         );
-        assert_eq!(code_and_kind(&ObolError::Network("x".into())), (ERR_NETWORK, "Network"));
+        assert_eq!(
+            code_and_kind(&ObolError::Network("x".into())),
+            (ERR_NETWORK, "Network")
+        );
     }
 
     #[test]
@@ -254,7 +329,11 @@ mod tests {
 
     // Seed a temp pricing dir from the shared prices fixture; returns the dir.
     fn seed_pricing() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("obol-ffi-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let dir = std::env::temp_dir().join(format!(
+            "obol-ffi-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         std::env::set_var("OBOL_PRICING_DIR", &dir);
         let prices = include_bytes!("../../../bindings/testdata/prices.json");
@@ -262,7 +341,9 @@ mod tests {
         dir
     }
 
-    fn out_ptr() -> *mut c_char { std::ptr::null_mut() }
+    fn out_ptr() -> *mut c_char {
+        std::ptr::null_mut()
+    }
 
     #[test]
     fn estimate_bytes_success_with_seeded_store() {
@@ -306,7 +387,12 @@ mod tests {
     #[test]
     fn estimate_bytes_null_out_is_code_7() {
         let data = b"{}";
-        let code = obol_estimate_bytes(data.as_ptr(), data.len(), std::ptr::null(), std::ptr::null_mut());
+        let code = obol_estimate_bytes(
+            data.as_ptr(),
+            data.len(),
+            std::ptr::null(),
+            std::ptr::null_mut(),
+        );
         assert_eq!(code, ERR_INVALID_ARG);
     }
 

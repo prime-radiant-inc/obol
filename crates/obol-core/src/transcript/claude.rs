@@ -15,12 +15,15 @@ pub struct ClaudeParse {
 /// `message.id` collapse to one, keeping the LAST entry's usage (streaming
 /// snapshots overwrite; never sum).
 pub fn parse(bytes: &[u8]) -> Result<ClaudeParse, ObolError> {
-    let text = std::str::from_utf8(bytes)
-        .map_err(|e| ObolError::MalformedTranscript { line: 0, msg: e.to_string() })?;
+    let text = std::str::from_utf8(bytes).map_err(|e| ObolError::MalformedTranscript {
+        line: 0,
+        msg: e.to_string(),
+    })?;
 
     // Preserve first-seen order of message ids; overwrite usage on each new line.
     let mut order: Vec<String> = Vec::new();
-    let mut by_id: std::collections::HashMap<String, MessageUsage> = std::collections::HashMap::new();
+    let mut by_id: std::collections::HashMap<String, MessageUsage> =
+        std::collections::HashMap::new();
     let mut out = ClaudeParse::default();
 
     for line in text.lines() {
@@ -53,21 +56,33 @@ pub fn parse(bytes: &[u8]) -> Result<ClaudeParse, ObolError> {
             _ => continue,
         };
 
-        let id = msg.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+        let id = msg
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         let g = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
         let input = g("input_tokens");
         let cache_read = g("cache_read_input_tokens");
         let cache_creation = g("cache_creation_input_tokens");
         let (cw5, cw1) = match usage.get("cache_creation") {
             Some(cc) if cc.is_object() => (
-                cc.get("ephemeral_5m_input_tokens").and_then(Value::as_u64).unwrap_or(0),
-                cc.get("ephemeral_1h_input_tokens").and_then(Value::as_u64).unwrap_or(0),
+                cc.get("ephemeral_5m_input_tokens")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                cc.get("ephemeral_1h_input_tokens")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
             ),
             _ => (cache_creation, 0), // no split -> treat all creation as 5m
         };
 
         let mu = MessageUsage {
-            model: msg.get("model").and_then(Value::as_str).unwrap_or("").to_string(),
+            model: msg
+                .get("model")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
             provider: Provider::Anthropic,
             namespace: "litellm".into(),
             input_uncached: input,
@@ -76,7 +91,10 @@ pub fn parse(bytes: &[u8]) -> Result<ClaudeParse, ObolError> {
             cache_write_1h: cw1,
             output: g("output_tokens"),
             request_input_tokens: input + cache_read + cache_creation,
-            service_tier: usage.get("service_tier").and_then(Value::as_str).map(String::from),
+            service_tier: usage
+                .get("service_tier")
+                .and_then(Value::as_str)
+                .map(String::from),
         };
 
         let key = if id.is_empty() {
