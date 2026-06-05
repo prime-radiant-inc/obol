@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
       - name: rustfmt
         run: mise exec rust@1.96.0 -- cargo fmt --check
       - name: clippy
@@ -79,13 +79,13 @@ jobs:
       matrix:
         include:
           - { os: macos-14,         name: macos-arm64 }
-          - { os: macos-13,         name: macos-x64 }
+          - { os: macos-15-intel,   name: macos-x64 }
           - { os: ubuntu-24.04,     name: linux-x64 }
           - { os: ubuntu-24.04-arm, name: linux-arm64 }
     steps:
       - uses: actions/checkout@v4
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
