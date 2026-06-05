@@ -13,10 +13,12 @@ this gate proves there is no drift across the seam.
 - Single pricing snapshot: `bindings/testdata/prices.json` copied to
   `$OBOL_PRICING_DIR/current.json` (a temp dir), so all three consumers read the exact
   same rates.
-- Three consumers, one fixture:
-  - Rust:   `obol-cli estimate <T> --dialect claude --json`, `total_usd` field.
-  - Python: `obol.estimate_path(<T>, dialect='claude').total_usd` (ctypes over the dylib).
-  - Go:     `bindings/go/cmd/total <T> claude` (cgo over the dylib).
+- Five consumers, one fixture:
+  - Rust:    `obol-cli estimate <T> --dialect claude --json`, `total_usd` field.
+  - Python:  `obol.estimate_path(<T>, dialect='claude').total_usd` (ctypes over the dylib).
+  - Go:      `bindings/go/cmd/total <T> claude` (cgo over the dylib).
+  - TS/Bun:  `bun  bindings/typescript/total.ts <T> claude` (`bun:ffi` over the dylib).
+  - TS/Node: `node bindings/typescript/total.ts <T> claude` (`koffi` over the dylib).
 - All three totals are normalized through one Python `float()` parse before comparison
   (`repr(float(x))`), so the comparison is strictly value-based (IEEE-754), never sensitive
   to source formatting (e.g. Go's `FormatFloat` exponent style vs serde's).
@@ -26,10 +28,12 @@ this gate proves there is no drift across the seam.
 ## Results
 
 ```
-rust : 0.000995
-py   : 0.000995
-go   : 0.000995
-OK: rust == python == go total_usd (0.000995)
+rust    : 0.000995
+py      : 0.000995
+go      : 0.000995
+ts(bun) : 0.000995
+ts(node): 0.000995
+OK: rust == python == go == ts(bun) == ts(node) total_usd (0.000995)
 ```
 
 | Consumer | path | total_usd |
@@ -37,8 +41,10 @@ OK: rust == python == go total_usd (0.000995)
 | Rust CLI | `obol-cli estimate --json` | 0.000995 |
 | Python (ctypes) | `obol.estimate_path` | 0.000995 |
 | Go (cgo) | `cmd/total` | 0.000995 |
+| TS / Bun (`bun:ffi`) | `total.ts` | 0.000995 |
+| TS / Node (`koffi`) | `total.ts` | 0.000995 |
 
-All three agree to the full IEEE-754 value. The seam is faithful.
+All five agree to the full IEEE-754 value. The seam is faithful.
 
 ## Per-binding test suites
 
@@ -49,9 +55,15 @@ unknown-dialect error (code 7), plus version:
 - Python: `cd bindings/python && PYTHONPATH=. python -m pytest tests -q` — 5 passed.
 - Go:     `cd bindings/go && CGO_ENABLED=1 go test ./...` — ok (Version, EstimatePath,
   MissingTables→code 1, UnknownDialect→code 7).
+- TS:     `cd bindings/typescript && bun test` — 5 pass; `node --test test/obol.test.ts` — 5 pass.
+  The *same* `node:test` file runs under both runtimes (version, estimatePath success,
+  estimateBytes auto-detect, missing-tables→code 1, unknown-dialect→code 7).
 
-Both run env-free after `cargo build -p obol-ffi`: the Python loader falls back to
-`target/debug`, and the Go binding bakes `-Wl,-rpath,…/target/debug` into the test binary.
+Both Python and Go run env-free after `cargo build -p obol-ffi`: the Python loader falls back to
+`target/debug`, and the Go binding bakes `-Wl,-rpath,…/target/debug` into the test binary. The TS
+loader also falls back to `target/debug`. One TS caveat (handled in `test/pricing-env.ts`): **Bun
+does not propagate runtime `process.env` writes to the native `getenv`** the Rust core reads, so
+the test suite sets `OBOL_PRICING_DIR` via libc `setenv` under Bun; Node propagates it natively.
 
 ## Linux verification (closes the macOS-only risk)
 

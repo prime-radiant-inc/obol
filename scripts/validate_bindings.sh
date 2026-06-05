@@ -25,12 +25,20 @@ py_total=$( (cd bindings/python && PYTHONPATH=. python3 -c \
   "import obol; print(obol.estimate_path('$ROOT/$T', dialect='claude').total_usd)") | norm)
 go_total=$( (cd bindings/go && go run ./cmd/total "$ROOT/$T" claude) | norm)
 
-echo "rust : $rust_total"
-echo "py   : $py_total"
-echo "go   : $go_total"
+# Ensure the TS binding's deps (koffi, for the Node consumer) are present.
+( cd bindings/typescript && bun install >/dev/null 2>&1 || npm install >/dev/null 2>&1 )
+ts_bun=$(  (cd bindings/typescript && bun  total.ts "$ROOT/$T" claude) | norm)
+ts_node=$( (cd bindings/typescript && node total.ts "$ROOT/$T" claude) | norm)
 
-if [ "$rust_total" = "$py_total" ] && [ "$py_total" = "$go_total" ]; then
-  echo "OK: rust == python == go total_usd ($rust_total)"
+echo "rust    : $rust_total"
+echo "py      : $py_total"
+echo "go      : $go_total"
+echo "ts(bun) : $ts_bun"
+echo "ts(node): $ts_node"
+
+if [ "$rust_total" = "$py_total" ] && [ "$py_total" = "$go_total" ] \
+   && [ "$go_total" = "$ts_bun" ] && [ "$ts_bun" = "$ts_node" ]; then
+  echo "OK: rust == python == go == ts(bun) == ts(node) total_usd ($rust_total)"
 else
-  echo "MISMATCH: rust=$rust_total python=$py_total go=$go_total"; exit 1
+  echo "MISMATCH: rust=$rust_total py=$py_total go=$go_total ts_bun=$ts_bun ts_node=$ts_node"; exit 1
 fi
