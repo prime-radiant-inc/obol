@@ -14,6 +14,10 @@ export function createBackend(libPath: string): FfiBackend {
   );
   const obol_refresh = lib.func("int obol_refresh_pricing(const char* as_of, _Out_ void** out)");
 
+  // Use a 1-byte sentinel for empty input so the FFI sees a non-NULL data pointer with len 0
+  // (matching the Go binding and the Bun adapter) rather than koffi passing NULL → code 7.
+  const nonEmpty = (data: Uint8Array) => (data.length === 0 ? Buffer.alloc(1) : data);
+
   // Copy the obol-owned string out, then free it. Always frees when the pointer is non-NULL.
   const drain = (code: number, out: [unknown]): RawResult => {
     const p = out[0];
@@ -32,7 +36,7 @@ export function createBackend(libPath: string): FfiBackend {
     },
     estimateBytes(data, dialect) {
       const out: [unknown] = [null];
-      const code = obol_estimate_bytes(data, data.length, dialect, out) as number;
+      const code = obol_estimate_bytes(nonEmpty(data), data.length, dialect, out) as number;
       return drain(code, out);
     },
     refresh(asOf) {

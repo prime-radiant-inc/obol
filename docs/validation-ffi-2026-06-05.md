@@ -1,17 +1,18 @@
-# Cross-language FFI validation: Rust CLI vs Python vs Go (2026-06-05)
+# Cross-language FFI validation: Rust CLI vs Python vs Go vs TypeScript (2026-06-05)
 
-PRI-2084 acceptance gate. Confirms the `obol-ffi` C ABI seam is faithful: the Rust
-CLI, the Python (ctypes) binding, and the Go (cgo) binding all produce a byte-for-byte
-identical `total_usd` for the SAME transcript priced against the SAME on-disk pricing
-snapshot. The bindings re-type the core's JSON; they never re-implement accounting, and
-this gate proves there is no drift across the seam.
+PRI-2084 + PRI-2085 acceptance gate. Confirms the `obol-ffi` C ABI seam is faithful: the Rust
+CLI, the Python (ctypes) binding, the Go (cgo) binding, and the TypeScript binding under both
+Bun (`bun:ffi`) and Node (`koffi`) all produce a byte-for-byte identical `total_usd` for the
+SAME transcript priced against the SAME on-disk pricing snapshot. The bindings re-type the
+core's JSON; they never re-implement accounting, and this gate proves there is no drift across
+the seam.
 
 ## Method
 
 - Single transcript: `bindings/testdata/claude-mini.jsonl` (model `claude-opus-4-8`,
   Claude dialect).
 - Single pricing snapshot: `bindings/testdata/prices.json` copied to
-  `$OBOL_PRICING_DIR/current.json` (a temp dir), so all three consumers read the exact
+  `$OBOL_PRICING_DIR/current.json` (a temp dir), so all five consumers read the exact
   same rates.
 - Five consumers, one fixture:
   - Rust:    `obol-cli estimate <T> --dialect claude --json`, `total_usd` field.
@@ -19,7 +20,7 @@ this gate proves there is no drift across the seam.
   - Go:      `bindings/go/cmd/total <T> claude` (cgo over the dylib).
   - TS/Bun:  `bun  bindings/typescript/total.ts <T> claude` (`bun:ffi` over the dylib).
   - TS/Node: `node bindings/typescript/total.ts <T> claude` (`koffi` over the dylib).
-- All three totals are normalized through one Python `float()` parse before comparison
+- All five totals are normalized through one Python `float()` parse before comparison
   (`repr(float(x))`), so the comparison is strictly value-based (IEEE-754), never sensitive
   to source formatting (e.g. Go's `FormatFloat` exponent style vs serde's).
 - The gate fails loudly on any mismatch — a Go failure is not swallowed.
@@ -85,9 +86,17 @@ rustup, Go 1.22, and Python 3.12 freshly installed. Reproducer: `/tmp/obol-linux
 - **Python:** 5 passed.
 - **Equivalence gate on Linux:** `rust == python == go == 0.000995`.
 
-So the C ABI, both bindings, and the env-free rpath linking all hold on Linux/aarch64, not
-just macOS. (x86-64 Linux and Windows remain unexercised, but nothing here is arch- or
-libc-specific beyond what was just confirmed portable.)
+The TypeScript binding (PRI-2085) was Linux-verified the same way, in a stock `ubuntu:24.04`
+container with Node 24 (NodeSource) and Bun installed (reproducer: `/tmp/obol-ts-linux-verify.sh`):
+the cdylib built as `libobol_ffi.so`; `koffi`'s `linux_arm64` prebuild installed; the TS test
+suite passed **5/5 under Bun and 5/5 under Node** (the same `node:test` file under both); and the
+**five-language gate** ran green: `rust == python == go == ts(bun) == ts(node) == 0.000995`. So
+`bun:ffi`/`koffi` `dlopen` of a `.so`, and the libc-`setenv` env shim under Bun, both work on
+Linux.
+
+So the C ABI, all four bindings (Python, Go, and TS under Bun + Node), and the env-free rpath
+linking all hold on Linux/aarch64, not just macOS. (x86-64 Linux and Windows remain unexercised,
+but nothing here is arch- or libc-specific beyond what was just confirmed portable.)
 
 ## Conclusion
 
