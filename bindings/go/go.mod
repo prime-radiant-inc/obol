@@ -1,3 +1,3 @@
-module github.com/primeradiant/obol/bindings/go
+module github.com/prime-radiant-inc/obol/bindings/go
 
 go 1.21

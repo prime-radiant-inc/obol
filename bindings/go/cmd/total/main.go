@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/primeradiant/obol/bindings/go/obol"
+	"github.com/prime-radiant-inc/obol/bindings/go/obol"
 )
 
 func main() {
