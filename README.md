@@ -8,13 +8,19 @@ The name is the coin paid as a toll — what the run cost you for passage.
 
 ## Status
 
-v1: a Rust library (`obol-core`) + CLI (`obol`). Two dialects (Claude Code, Codex),
-LiteLLM pricing. Language bindings (TS/Python/Go) are deliberately deferred until the CLI
-is proven. See `docs/specs/2026-06-04-obol-design.md` for scope and `docs/plans/` for the
-build plan.
+A Rust library (`obol-core`) + CLI (`obol`), plus language bindings. Three transcript
+dialects — **Claude Code, Codex, and Pi** — priced against LiteLLM and OpenRouter snapshots.
 
-Per-session totals are validated to match `superpowers-evals` exactly on a real corpus —
-see `docs/validation-2026-06-04.md`.
+Bindings reach the core through a small C ABI (`obol-ffi`, a cdylib) and re-type its JSON;
+they never re-implement the accounting:
+
+- **Python** (ctypes), **Go** (cgo), **TypeScript** under both **Bun** (`bun:ffi`) and
+  **Node** (`koffi`).
+
+Per-session totals are validated to match `superpowers-evals` exactly on a real corpus, and
+all five consumers (Rust CLI, Python, Go, TS/Bun, TS/Node) produce a byte-identical
+`total_usd` for the same transcript — see `docs/validation-*.md`. Design specs and build
+plans live under `docs/specs/` and `docs/plans/`.
 
 ## Build & test
 
@@ -51,7 +57,14 @@ Pricing is stored under `$OBOL_PRICING_DIR` if set, else `$XDG_DATA_HOME/obol`, 
 `~/.local/share/obol`. If you run `estimate` before `refresh`, you'll get a clear
 "pricing tables not found — run `obol refresh`" error.
 
+## Acknowledgements
+
+obol's dialect parsers stand on the shoulders of
+[AgentsView](https://github.com/kenn-io/agentsview) (MIT, © 2026 Kenn Software LLC). Rather
+than guess at the quirks of each agent's transcript format, we reconciled our Claude, Codex,
+and Pi parsers against AgentsView's — their careful reverse-engineering of these formats
+saved us a great deal of trial and error. Thank you. 🙏
+
 ## License
 
-MIT. The dialect parsers are reconciled against
-[AgentsView](https://github.com/kenn-io/agentsview) (MIT, © 2026 Kenn Software LLC).
+[Apache License 2.0](./LICENSE). See [`NOTICE`](./NOTICE) for attributions.
