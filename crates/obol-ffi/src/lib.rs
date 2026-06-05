@@ -1,3 +1,9 @@
+// The exported `extern "C"` entry points take and dereference raw C pointers but keep a
+// safe (non-`unsafe fn`) signature on purpose: they are the C-callable boundary, and each
+// upholds the pointer contract internally (NULL checks + documented ownership rules below).
+// clippy's `not_unsafe_ptr_arg_deref` flags this idiomatic FFI shape; allow it crate-wide.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 //! obol-ffi: a C ABI over obol-core. JSON at the seam; the Rust core owns all accounting.
 //!
 //! OWNERSHIP & SAFETY CONTRACT (honor in every binding):
@@ -104,6 +110,84 @@ unsafe fn finish<T: serde::Serialize>(out: *mut *mut c_char, r: Result<T, ObolEr
     }
 }
 
+/// NULL -> auto-detect (Ok(None)); known string -> Ok(Some). Unknown/invalid UTF-8 -> Err(()).
+fn parse_dialect(dialect: *const c_char) -> Result<Option<Dialect>, ()> {
+    if dialect.is_null() {
+        return Ok(None);
+    }
+    let s = unsafe { CStr::from_ptr(dialect) }.to_str().map_err(|_| ())?;
+    match s {
+        "claude" => Ok(Some(Dialect::Claude)),
+        "codex" => Ok(Some(Dialect::Codex)),
+        "pi" => Ok(Some(Dialect::Pi)),
+        _ => Err(()),
+    }
+}
+
+/// Estimate cost from transcript bytes (borrowed). See the ownership contract.
+#[no_mangle]
+pub extern "C" fn obol_estimate_bytes(
+    data: *const u8,
+    len: usize,
+    dialect: *const c_char,
+    out_json: *mut *mut c_char,
+) -> i32 {
+    if out_json.is_null() {
+        return ERR_INVALID_ARG;
+    }
+    unsafe { *out_json = ptr::null_mut() };
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+        if data.is_null() {
+            return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "data pointer is NULL");
+        }
+        let dialect = match parse_dialect(dialect) {
+            Ok(d) => d,
+            Err(()) => {
+                return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "unknown or invalid dialect string");
+            }
+        };
+        let bytes = std::slice::from_raw_parts(data, len);
+        finish(out_json, estimate_cost(Source::Bytes(bytes), dialect))
+    }));
+    match result {
+        Ok(code) => code,
+        Err(_) => unsafe { fail(out_json, ERR_PANIC, "Panic", "internal panic caught at FFI boundary") },
+    }
+}
+
+/// Estimate cost from a transcript file path (borrowed). See the ownership contract.
+#[no_mangle]
+pub extern "C" fn obol_estimate_path(
+    path: *const c_char,
+    dialect: *const c_char,
+    out_json: *mut *mut c_char,
+) -> i32 {
+    if out_json.is_null() {
+        return ERR_INVALID_ARG;
+    }
+    unsafe { *out_json = ptr::null_mut() };
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+        if path.is_null() {
+            return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "path pointer is NULL");
+        }
+        let path = match CStr::from_ptr(path).to_str() {
+            Ok(s) => s,
+            Err(_) => return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "path is not valid UTF-8"),
+        };
+        let dialect = match parse_dialect(dialect) {
+            Ok(d) => d,
+            Err(()) => {
+                return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "unknown or invalid dialect string");
+            }
+        };
+        finish(out_json, estimate_cost(Source::Path(Path::new(path)), dialect))
+    }));
+    match result {
+        Ok(code) => code,
+        Err(_) => unsafe { fail(out_json, ERR_PANIC, "Panic", "internal panic caught at FFI boundary") },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +224,86 @@ mod tests {
         assert_eq!(v["error"]["code"], ERR_MALFORMED);
         assert_eq!(v["error"]["kind"], "MalformedTranscript");
         assert_eq!(v["error"]["message"], "bad: \"quote\"");
+    }
+
+    use std::ffi::CString;
+    use std::path::PathBuf;
+
+    // Seed a temp pricing dir from the shared prices fixture; returns the dir.
+    fn seed_pricing() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("obol-ffi-{}-{:?}", std::process::id(), std::thread::current().id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("OBOL_PRICING_DIR", &dir);
+        let prices = include_bytes!("../../../bindings/testdata/prices.json");
+        std::fs::write(dir.join("current.json"), prices).unwrap();
+        dir
+    }
+
+    fn out_ptr() -> *mut c_char { std::ptr::null_mut() }
+
+    #[test]
+    fn estimate_bytes_success_with_seeded_store() {
+        let dir = seed_pricing();
+        let data = include_bytes!("../tests/fixtures/claude-mini.jsonl");
+        let mut out = out_ptr();
+        let code = obol_estimate_bytes(data.as_ptr(), data.len(), std::ptr::null(), &mut out);
+        assert_eq!(code, OK, "code={code}");
+        assert!(!out.is_null());
+        let json = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
+        obol_string_free(out);
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v["total_usd"].as_f64().unwrap() > 0.0, "{json}");
+        std::fs::remove_dir_all(&dir).ok();
+        std::env::remove_var("OBOL_PRICING_DIR");
+    }
+
+    #[test]
+    fn estimate_bytes_missing_tables_is_code_1() {
+        std::env::set_var("OBOL_PRICING_DIR", "/nonexistent/obol-ffi-xyz");
+        let data = include_bytes!("../tests/fixtures/claude-mini.jsonl");
+        let mut out = out_ptr();
+        let code = obol_estimate_bytes(data.as_ptr(), data.len(), std::ptr::null(), &mut out);
+        assert_eq!(code, ERR_PRICING_MISSING);
+        let json = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
+        obol_string_free(out);
+        assert!(json.contains("PricingTablesMissing"));
+        std::env::remove_var("OBOL_PRICING_DIR");
+    }
+
+    #[test]
+    fn estimate_bytes_unknown_dialect_string_is_code_7() {
+        let data = b"{}";
+        let bad = CString::new("banana").unwrap();
+        let mut out = out_ptr();
+        let code = obol_estimate_bytes(data.as_ptr(), data.len(), bad.as_ptr(), &mut out);
+        assert_eq!(code, ERR_INVALID_ARG);
+        obol_string_free(out);
+    }
+
+    #[test]
+    fn estimate_bytes_null_out_is_code_7() {
+        let data = b"{}";
+        let code = obol_estimate_bytes(data.as_ptr(), data.len(), std::ptr::null(), std::ptr::null_mut());
+        assert_eq!(code, ERR_INVALID_ARG);
+    }
+
+    #[test]
+    fn estimate_bytes_null_data_is_code_7() {
+        let mut out = out_ptr();
+        let code = obol_estimate_bytes(std::ptr::null(), 0, std::ptr::null(), &mut out);
+        assert_eq!(code, ERR_INVALID_ARG);
+        obol_string_free(out);
+    }
+
+    #[test]
+    fn estimate_path_bad_path_is_io_error() {
+        let dir = seed_pricing();
+        let p = CString::new("/nonexistent/obol/transcript.jsonl").unwrap();
+        let mut out = out_ptr();
+        let code = obol_estimate_path(p.as_ptr(), std::ptr::null(), &mut out);
+        assert_eq!(code, ERR_IO, "code={code}");
+        obol_string_free(out);
+        std::fs::remove_dir_all(&dir).ok();
+        std::env::remove_var("OBOL_PRICING_DIR");
     }
 }
