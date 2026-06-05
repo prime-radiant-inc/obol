@@ -53,6 +53,30 @@ unknown-dialect error (code 7), plus version:
 Both run env-free after `cargo build -p obol-ffi`: the Python loader falls back to
 `target/debug`, and the Go binding bakes `-Wl,-rpath,…/target/debug` into the test binary.
 
+## Linux verification (closes the macOS-only risk)
+
+The above was developed on macOS (`.dylib`). The whole stack was then re-verified from a
+clean checkout inside a stock `ubuntu:24.04` container (linux/aarch64), with Rust 1.96 via
+rustup, Go 1.22, and Python 3.12 freshly installed. Reproducer: `/tmp/obol-linux-verify.sh`
+(clone `/src` → install toolchains → run every gate). All passed:
+
+- **Workspace tests:** 38 passed (1 cli + 24 core + 13 ffi), including the cbindgen
+  `header_matches_source` drift test — so `include/obol.h` is byte-identical when regenerated
+  on Linux, and `usize` still emits as `uintptr_t`.
+- **clippy** `--all-targets -D warnings` — clean.
+- **cdylib:** `target/debug/libobol_ffi.so` — `ELF 64-bit LSB shared object, ARM aarch64`.
+- **Go:** `go test ./...` — ok; cgo links against `libobol_ffi.so` + `obol.h`.
+- **rpath proven env-free (the previously-untested claim):** the cgo binary carries
+  `DT_RUNPATH = …/target/debug`; run with `env -u LD_LIBRARY_PATH` it prints `0.000995`, and
+  `ldd` resolves `libobol_ffi.so => …/target/debug/libobol_ffi.so` with **no**
+  `LD_LIBRARY_PATH` set. The baked `-Wl,-rpath` works on Linux as designed.
+- **Python:** 5 passed.
+- **Equivalence gate on Linux:** `rust == python == go == 0.000995`.
+
+So the C ABI, both bindings, and the env-free rpath linking all hold on Linux/aarch64, not
+just macOS. (x86-64 Linux and Windows remain unexercised, but nothing here is arch- or
+libc-specific beyond what was just confirmed portable.)
+
 ## Conclusion
 
 The C ABI is the single seam and the Rust core is the single source of truth. Two
