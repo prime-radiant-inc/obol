@@ -44,7 +44,25 @@ publish from a maintainer's machine. Every release after is tokenless OIDC via t
 - `version()` (the binding API) returns the **Rust core** version (`obol_version()`, e.g. `0.1.0`),
   which is intentionally decoupled from the npm package version stamped from the tag.
 
+## Go — `github.com/prime-radiant-inc/obol-go` (the Go binding)
+
+Go has no registry; "publishing" is pushing a git tag to the **separate** `obol-go` repo, which
+`proxy.golang.org` caches automatically. The same `vX.Y.Z` tag that drives npm also drives Go: the
+`publish-go` job in `release.yml` builds nothing new — it reuses the four release dylibs, runs
+`scripts/assemble-obol-go.sh` to generate the module (flattened source + per-platform `go:embed`
+files + `go.mod`/`go.sum`), smoke-tests it, then commits and tags `obol-go`.
+
+- **Auth:** a fine-grained PAT `OBOL_GO_TOKEN` (secret on this repo) with **Contents: Read and write**
+  on `obol-go` only. Deploy keys are disabled org-wide; the default `GITHUB_TOKEN` can't reach a
+  second repo. Keep `obol-go` workflow-free so Contents-only suffices. The PAT expires — rotate it
+  (a GitHub App is the no-rotation upgrade if that becomes a chore).
+- **Immutability:** once the proxy serves `vX.Y.Z` it's cached forever; the job refuses a tag that
+  already exists, and the smoke test gates a broken assembly before the tag is pushed.
+- **No C toolchain for consumers:** the binding is purego (`CGO_ENABLED=0`); the published module
+  embeds the platform dylib and extracts+`dlopen`s it at first use. `version()` returns the Rust
+  core version, decoupled from the module tag (same as npm).
+
 ## Other registries
 
-PyPI, crates.io, and Go publishing are not yet wired — separate follow-on tickets. The GitHub
+PyPI and crates.io publishing are not yet wired — separate follow-on tickets. The GitHub
 Release dylibs (step 5 above) are the canonical artifacts those will reuse.

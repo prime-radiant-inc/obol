@@ -93,3 +93,42 @@ jobs:
         with:
           files: /tmp/assets/libobol_ffi-*
           fail_on_unmatched_files: true
+
+  publish-go:
+    needs: dylibs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4 # monorepo: source + assemble script
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/dylibs # → /tmp/dylibs/dylib-<plat>-<arch>/libobol_ffi.*
+      - name: Check out obol-go
+        uses: actions/checkout@v4
+        with:
+          repository: prime-radiant-inc/obol-go
+          token: ${{ secrets.OBOL_GO_TOKEN }} # fine-grained PAT, Contents:write on obol-go
+          path: obol-go
+      - name: Refuse if tag already published (proxy.golang.org is immutable)
+        working-directory: obol-go
+        run: |
+          if git ls-remote --exit-code --tags origin "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "::error::${GITHUB_REF_NAME} already tagged on obol-go — bump the version."; exit 1
+          fi
+      - name: Assemble module
+        run: scripts/assemble-obol-go.sh "$GITHUB_WORKSPACE/obol-go" /tmp/dylibs "${GITHUB_REF_NAME#v}"
+      - name: Smoke test (embed→extract→Dlopen, no OBOL_LIB)
+        working-directory: obol-go
+        run: CGO_ENABLED=0 go test ./...
+      - name: Commit, tag, push
+        working-directory: obol-go
+        run: |
+          git config user.name  "obol-release"
+          git config user.email "obol-release@users.noreply.github.com"
+          git add -A
+          git commit -m "Release ${GITHUB_REF_NAME} (generated from prime-radiant-inc/obol@${GITHUB_SHA})"
+          git tag "${GITHUB_REF_NAME}"
+          git push origin HEAD:main --follow-tags

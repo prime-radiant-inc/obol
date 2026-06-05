@@ -73,11 +73,10 @@ jobs:
       - name: Go binding tests
         working-directory: bindings/go
         env:
-          CGO_ENABLED: "1"
+          CGO_ENABLED: "0"
         run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/target/debug"
-          fi
+          ext=so; [ "$RUNNER_OS" = "macOS" ] && ext=dylib
+          export OBOL_LIB="$GITHUB_WORKSPACE/target/debug/libobol_ffi.$ext"
           go test ./...
 
       - name: TypeScript binding tests (Bun + Node)
@@ -88,8 +87,4 @@ jobs:
           node --test test/obol.test.ts
 
       - name: Five-language equivalence gate
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/target/debug"
-          fi
-          ./scripts/validate_bindings.sh
+        run: ./scripts/validate_bindings.sh

@@ -23,7 +23,7 @@ rust_total=$($RUST run -q -p obol-cli -- estimate "$T" --dialect claude --json \
   | python3 -c 'import sys,json; print(json.load(sys.stdin)["total_usd"])' | norm)
 py_total=$( (cd bindings/python && PYTHONPATH=. python3 -c \
   "import obol; print(obol.estimate_path('$ROOT/$T', dialect='claude').total_usd)") | norm)
-go_total=$( (cd bindings/go && go run ./cmd/total "$ROOT/$T" claude) | norm)
+go_total=$( (cd bindings/go && CGO_ENABLED=0 go run ./cmd/total "$ROOT/$T" claude) | norm)
 
 # Ensure the TS binding's deps (koffi, for the Node consumer) are present.
 ( cd bindings/typescript && bun install >/dev/null 2>&1 || npm install >/dev/null 2>&1 )
