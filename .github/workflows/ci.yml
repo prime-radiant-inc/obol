@@ -17,11 +17,16 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v4
+      # Use rust-toolchain (not mise) here: a fresh mise rust install is minimal and lacks the
+      # rustfmt/clippy components. The test job keeps mise because the repo scripts call `mise exec`.
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - name: rustfmt
-        run: mise exec rust@1.96.0 -- cargo fmt --check
+        run: cargo fmt --check
       - name: clippy
-        run: mise exec rust@1.96.0 -- cargo clippy --all-targets --workspace -- -D warnings
+        run: cargo clippy --all-targets --workspace -- -D warnings
 
   test:
     name: test (${{ matrix.name }})
