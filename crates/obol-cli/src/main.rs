@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use obol_core::{estimate_cost, refresh_pricing_tables, Dialect, Input};
+use obol_core::{estimate_cost, refresh_pricing_tables, Dialect, Source};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -36,9 +36,7 @@ fn run() -> Result<(), String> {
                 "claude" => Dialect::Claude,
                 _ => Dialect::Codex,
             });
-            let data = std::fs::read(&path).map_err(|e| e.to_string())?;
-            let est = estimate_cost(Input::Bytes { data: &data, dialect: hint })
-                .map_err(|e| e.to_string())?;
+            let est = estimate_cost(Source::Path(&path), hint).map_err(|e| e.to_string())?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&est).map_err(|e| e.to_string())?);
             } else {
