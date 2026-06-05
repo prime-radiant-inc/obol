@@ -129,7 +129,9 @@ jobs:
           git config user.name  "obol-release"
           git config user.email "obol-release@users.noreply.github.com"
           git add -A
-          git commit -m "Release ${GITHUB_REF_NAME} (generated from prime-radiant-inc/obol@${GITHUB_SHA})"
+          # --allow-empty: the module content is version-independent (the version lives in the tag,
+          # not the files), so an unchanged release has no diff — without this, git commit fails.
+          git commit --allow-empty -m "Release ${GITHUB_REF_NAME} (generated from prime-radiant-inc/obol@${GITHUB_SHA})"
           git push origin HEAD:main
           # Push the tag EXPLICITLY: `git tag` is lightweight and `--follow-tags` skips those,
           # so the tag would silently never reach obol-go (→ go get can't resolve the version).
