@@ -1,19 +1,12 @@
-// Package obol is a thin cgo binding over obol-core's C ABI. The Rust core owns all
-// accounting; this package only marshals C strings and unmarshals JSON.
+// Package obol is a thin purego binding over obol-core's C ABI. The Rust core owns all
+// accounting; this package only marshals C strings and unmarshals JSON. No cgo: the native
+// library is loaded at runtime via github.com/ebitengine/purego (CGO_ENABLED=0 works).
 package obol
-
-/*
-#cgo CFLAGS: -I${SRCDIR}/../../../crates/obol-ffi/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../target/debug -lobol_ffi -Wl,-rpath,${SRCDIR}/../../../target/debug
-#include <stdlib.h>
-#include "obol.h"
-*/
-import "C"
 
 import (
 	"encoding/json"
 	"fmt"
-	"unsafe"
+	"runtime"
 )
 
 type TokenBuckets struct {
@@ -62,12 +55,12 @@ func (e *ObolError) Error() string {
 }
 
 // drain copies the obol-owned C string into a Go []byte and frees it. Always frees.
-func drain(out *C.char) []byte {
-	if out == nil {
+func drain(out uintptr) []byte {
+	if out == 0 {
 		return nil
 	}
-	defer C.obol_string_free(out)
-	return []byte(C.GoString(out))
+	defer cStringFree(out)
+	return []byte(cstr(out))
 }
 
 func toError(code int, payload []byte) error {
@@ -83,7 +76,7 @@ func toError(code int, payload []byte) error {
 	return e
 }
 
-func decodeEstimate(code C.int32_t, payload []byte) (*CostEstimate, error) {
+func decodeEstimate(code int32, payload []byte) (*CostEstimate, error) {
 	if int(code) != 0 {
 		return nil, toError(int(code), payload)
 	}
@@ -96,36 +89,44 @@ func decodeEstimate(code C.int32_t, payload []byte) (*CostEstimate, error) {
 
 // EstimatePath estimates a transcript file's cost. dialect "" means auto-detect.
 func EstimatePath(path, dialect string) (*CostEstimate, error) {
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
-	cDialect := dialectArg(dialect)
-	defer freeDialect(cDialect)
-	var out *C.char
-	code := C.obol_estimate_path(cPath, cDialect, &out)
+	if err := ensureLoaded(); err != nil {
+		return nil, err
+	}
+	p := append([]byte(path), 0)
+	d := dialectBytes(dialect)
+	var out uintptr
+	code := cEstimatePath(&p[0], bytePtr(d), &out)
+	runtime.KeepAlive(p)
+	runtime.KeepAlive(d)
 	return decodeEstimate(code, drain(out))
 }
 
 // EstimateBytes estimates in-memory transcript bytes. dialect "" means auto-detect.
 func EstimateBytes(data []byte, dialect string) (*CostEstimate, error) {
-	var dptr *C.uint8_t
-	if len(data) > 0 {
-		dptr = (*C.uint8_t)(unsafe.Pointer(&data[0]))
-	} else {
-		dptr = (*C.uint8_t)(unsafe.Pointer(&[]byte{0}[0])) // non-nil for len 0
+	if err := ensureLoaded(); err != nil {
+		return nil, err
 	}
-	cDialect := dialectArg(dialect)
-	defer freeDialect(cDialect)
-	var out *C.char
-	code := C.obol_estimate_bytes(dptr, C.uintptr_t(len(data)), cDialect, &out)
+	dptr := data
+	if len(dptr) == 0 {
+		dptr = []byte{0} // non-nil pointer for len 0; length below stays 0
+	}
+	d := dialectBytes(dialect)
+	var out uintptr
+	code := cEstimateBytes(&dptr[0], uintptr(len(data)), bytePtr(d), &out)
+	runtime.KeepAlive(dptr)
+	runtime.KeepAlive(d)
 	return decodeEstimate(code, drain(out))
 }
 
 // Refresh pulls fresh pricing tables. asOf is the caller's date string.
 func Refresh(asOf string) (*RefreshReport, error) {
-	cAsOf := C.CString(asOf)
-	defer C.free(unsafe.Pointer(cAsOf))
-	var out *C.char
-	code := C.obol_refresh_pricing(cAsOf, &out)
+	if err := ensureLoaded(); err != nil {
+		return nil, err
+	}
+	a := append([]byte(asOf), 0)
+	var out uintptr
+	code := cRefresh(&a[0], &out)
+	runtime.KeepAlive(a)
 	payload := drain(out)
 	if int(code) != 0 {
 		return nil, toError(int(code), payload)
@@ -137,20 +138,10 @@ func Refresh(asOf string) (*RefreshReport, error) {
 	return &r, nil
 }
 
-// Version returns the obol library version (static C string; not freed).
+// Version returns the obol core library version (static C string; not freed).
 func Version() string {
-	return C.GoString(C.obol_version())
-}
-
-func dialectArg(dialect string) *C.char {
-	if dialect == "" {
-		return nil
+	if err := ensureLoaded(); err != nil {
+		return ""
 	}
-	return C.CString(dialect)
-}
-
-func freeDialect(p *C.char) {
-	if p != nil {
-		C.free(unsafe.Pointer(p))
-	}
+	return cstr(cVersion())
 }
