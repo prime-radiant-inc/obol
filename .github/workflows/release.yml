@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # OIDC for npm provenance / trusted publishing
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # never cancel a half-done publish
+
+jobs:
+  dylibs:
+    name: dylib (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, name: darwin-arm64, ext: dylib }
+          - { os: macos-15-intel, name: darwin-x64, ext: dylib }
+          - { os: ubuntu-24.04, name: linux-x64, ext: so }
+          - { os: ubuntu-24.04-arm, name: linux-arm64, ext: so }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+      - name: Build release cdylib
+        run: mise exec rust@1.96.0 -- cargo build --release -p obol-ffi
+      - name: Strip (per-OS)
+        run: |
+          LIB="target/release/libobol_ffi.${{ matrix.ext }}"
+          if [ "$RUNNER_OS" = "macOS" ]; then strip -x "$LIB"; else strip "$LIB"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dylib-${{ matrix.name }}
+          path: target/release/libobol_ffi.${{ matrix.ext }}
+          if-no-files-found: error
+
+  publish:
+    needs: dylibs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Pin npm (trusted publishing + provenance need >= 11.5.1)
+        run: npm install -g npm@^11.5.1
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/dylibs
+      - name: Assemble native/
+        working-directory: bindings/typescript
+        run: |
+          mkdir -p native/darwin-arm64 native/darwin-x64 native/linux-x64 native/linux-arm64
+          cp /tmp/dylibs/dylib-darwin-arm64/libobol_ffi.dylib native/darwin-arm64/
+          cp /tmp/dylibs/dylib-darwin-x64/libobol_ffi.dylib   native/darwin-x64/
+          cp /tmp/dylibs/dylib-linux-x64/libobol_ffi.so       native/linux-x64/
+          cp /tmp/dylibs/dylib-linux-arm64/libobol_ffi.so     native/linux-arm64/
+      - name: Build dist + stamp version
+        working-directory: bindings/typescript
+        run: |
+          bun install
+          bun x tsup
+          npm pkg set version="${GITHUB_REF_NAME#v}"
+      - name: Publish to npm
+        working-directory: bindings/typescript
+        # Prerelease versions (v1.2.3-rc.1) go to the `next` dist-tag, not `latest`.
+        # Token path (bootstrap): setup-node's .npmrc carries the token. OIDC path (post-bootstrap,
+        # secret deleted): remove .npmrc so an empty `_authToken=` line can't block OIDC activation
+        # (npm >= 11.5.1 then authenticates via the trusted publisher). provenance:true works on
+        # either path (public repo + id-token: write); no --provenance flag needed.
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DIST_TAG="latest"; case "$VERSION" in *-*) DIST_TAG="next";; esac
+          if [ -n "$NPM_TOKEN" ]; then
+            npm publish --tag "$DIST_TAG"
+          else
+            rm -f "$HOME/.npmrc"
+            npm publish --tag "$DIST_TAG"
+          fi
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: GitHub Release with dylibs
+        uses: softprops/action-gh-release@v2
+        with:
+          files: /tmp/dylibs/dylib-*/libobol_ffi.*
+          fail_on_unmatched_files: true
