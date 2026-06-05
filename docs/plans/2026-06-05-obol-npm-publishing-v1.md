@@ -181,11 +181,16 @@ permissions:
   contents: write # create the GitHub Release
   id-token: write # OIDC for npm provenance / trusted publishing
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # never cancel a half-done publish
+
 jobs:
   dylibs:
     name: dylib (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - { os: macos-14, name: darwin-arm64, ext: dylib }
@@ -216,6 +221,8 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+      - name: Pin npm (trusted publishing + provenance need >= 11.5.1)
+        run: npm install -g npm@^11.5.1
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.11"
@@ -238,12 +245,22 @@ jobs:
           npm pkg set version="${GITHUB_REF_NAME#v}"
       - name: Publish to npm
         working-directory: bindings/typescript
-        run: npm publish
+        # Prerelease versions (v1.2.3-rc.1) go to the `next` dist-tag, not `latest`.
+        # Token path (bootstrap): setup-node's .npmrc carries the token. OIDC path (post-bootstrap,
+        # secret deleted): remove .npmrc so an empty `_authToken=` line can't block OIDC activation
+        # (npm >= 11.5.1 then authenticates via the trusted publisher). provenance:true works on
+        # either path (public repo + id-token: write); no --provenance flag needed.
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DIST_TAG="latest"; case "$VERSION" in *-*) DIST_TAG="next";; esac
+          if [ -n "$NPM_TOKEN" ]; then
+            npm publish --tag "$DIST_TAG"
+          else
+            rm -f "$HOME/.npmrc"
+            npm publish --tag "$DIST_TAG"
+          fi
         env:
-          # First release: set repo secret NPM_TOKEN (granular @primeradianthq publish token).
-          # After a trusted publisher is configured on the package, leave NPM_TOKEN unset and this
-          # publishes tokenlessly via OIDC. provenance:true (in package.json) works either way on a
-          # public repo with id-token: write.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: GitHub Release with dylibs
         uses: softprops/action-gh-release@v2
@@ -280,8 +297,12 @@ git commit -m "ci: tag-triggered npm release — build 4 dylibs, assemble, publi
   bootstrap**: (a) create a granular `@primeradianthq` automation token, add it as repo secret
   `NPM_TOKEN`; (b) push the first tag — it publishes via the token and creates the package; (c) on
   npmjs.com, configure the package's Trusted Publisher → `prime-radiant-inc/obol`, workflow
-  `release.yml`; (d) delete the `NPM_TOKEN` secret — subsequent tags publish tokenlessly via OIDC.
-  Note: `version()` returns the Rust core version (`0.1.0`), not the npm package version.
+  `release.yml`; (d) delete the `NPM_TOKEN` secret, then push a *patch* tag and **verify the first
+  tokenless release succeeds** — if it fails with `ENEEDAUTH`, a stale `.npmrc` `_authToken=` line
+  is the cause (the workflow removes it on the OIDC path, so this should not happen). Also document:
+  trusted publishing + provenance need **npm ≥ 11.5.1** (the workflow pins it); **prerelease tags**
+  (`v1.2.3-rc.1`) publish to the `next` dist-tag, not `latest`; and `version()` returns the Rust
+  core version (`0.1.0`), not the npm package version.
 
 - [ ] **Step 3: Commit.**
 
