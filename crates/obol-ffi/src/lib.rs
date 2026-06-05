@@ -188,6 +188,29 @@ pub extern "C" fn obol_estimate_path(
     }
 }
 
+/// Refresh pricing tables (network). `as_of` is the caller's date string. See the contract.
+#[no_mangle]
+pub extern "C" fn obol_refresh_pricing(as_of: *const c_char, out_json: *mut *mut c_char) -> i32 {
+    if out_json.is_null() {
+        return ERR_INVALID_ARG;
+    }
+    unsafe { *out_json = ptr::null_mut() };
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+        if as_of.is_null() {
+            return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "as_of pointer is NULL");
+        }
+        let as_of = match CStr::from_ptr(as_of).to_str() {
+            Ok(s) => s,
+            Err(_) => return fail(out_json, ERR_INVALID_ARG, "InvalidArgument", "as_of is not valid UTF-8"),
+        };
+        finish(out_json, refresh_pricing_tables(as_of))
+    }));
+    match result {
+        Ok(code) => code,
+        Err(_) => unsafe { fail(out_json, ERR_PANIC, "Panic", "internal panic caught at FFI boundary") },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,5 +328,20 @@ mod tests {
         obol_string_free(out);
         std::fs::remove_dir_all(&dir).ok();
         std::env::remove_var("OBOL_PRICING_DIR");
+    }
+
+    #[test]
+    fn refresh_null_as_of_is_code_7() {
+        let mut out = out_ptr();
+        let code = obol_refresh_pricing(std::ptr::null(), &mut out);
+        assert_eq!(code, ERR_INVALID_ARG);
+        obol_string_free(out);
+    }
+
+    #[test]
+    fn refresh_null_out_is_code_7() {
+        let as_of = CString::new("2026-06-05").unwrap();
+        let code = obol_refresh_pricing(as_of.as_ptr(), std::ptr::null_mut());
+        assert_eq!(code, ERR_INVALID_ARG);
     }
 }
