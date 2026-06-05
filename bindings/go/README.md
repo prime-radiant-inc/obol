@@ -1,43 +1,46 @@
-# obol — Go binding (cgo)
+# obol — Go binding (purego)
 
-A thin cgo binding over obol's C ABI (`obol-ffi`). It links the prebuilt shared library at
-build time and re-types the JSON the Rust core returns into idiomatic Go structs. The Rust
-core stays the single source of truth for all accounting; this package only marshals C
-strings and unmarshals JSON.
+A thin [purego](https://github.com/ebitengine/purego) binding over obol's C ABI (`obol-ffi`). It
+loads the prebuilt shared library at **runtime** (`dlopen`) and re-types the JSON the Rust core
+returns into idiomatic Go structs. **No cgo** — `CGO_ENABLED=0` works, so consumers need no C
+compiler. The Rust core stays the single source of truth for all accounting; this package only
+marshals C strings and unmarshals JSON.
 
-## Build prerequisites
+## Consuming it: `obol-go`
 
-cgo requires a C compiler (clang on macOS, gcc on Linux) and `CGO_ENABLED=1` (the default
-when a C toolchain is present). You also need the `obol-ffi` shared library
-(`libobol_ffi.dylib` on macOS, `libobol_ffi.so` on Linux):
+Published consumers don't use this directory — they import the generated, self-contained module
+that bundles the native libraries:
 
-```bash
-mise exec rust@1.96.0 -- cargo build -p obol-ffi
+```go
+import "github.com/prime-radiant-inc/obol-go" // go get github.com/prime-radiant-inc/obol-go
 ```
 
-## How the `#cgo` directives find the library
+That module is generated from *this* source by the release workflow (`scripts/assemble-obol-go.sh`):
+it embeds the per-platform `libobol_ffi` and extracts+`dlopen`s it on first use, so a plain
+`go get` works on macOS (arm64/x64) and Linux (x64/arm64) with no toolchain. This `bindings/go/`
+tree is the embed-free **source of truth**, used for in-repo development and the equivalence gate.
 
-The package preamble points the compiler and linker at the in-tree build:
+## How the library is located
 
-```
-#cgo CFLAGS:  -I${SRCDIR}/../../../crates/obol-ffi/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../target/debug -lobol_ffi -Wl,-rpath,${SRCDIR}/../../../target/debug
-```
+The loader resolves `libobol_ffi` in this order (first hit wins):
 
-`${SRCDIR}` is `bindings/go/obol`, so the three `../` reach the repo root. `CFLAGS` finds the
-committed `obol.h`; `LDFLAGS` links `-lobol_ffi` from `target/debug` and bakes that directory
-into the binary's runtime search path with `-Wl,-rpath`. After `cargo build -p obol-ffi` the
-tests and `cmd/total` run **env-free** — no `DYLD_LIBRARY_PATH` / `LD_LIBRARY_PATH` needed.
+1. **`OBOL_LIB`** — an explicit path to the shared library. Overrides everything.
+2. **Embedded** — in the published `obol-go` module, the platform library is embedded and extracted
+   to a content-hashed dir under `os.UserCacheDir()` (falling back to the temp dir), then `dlopen`'d.
+   Absent in this dev tree.
+3. **Dev `target/`** — repo-relative `target/release` then `target/debug`, located from the package
+   source file. So after `mise exec rust@1.96.0 -- cargo build -p obol-ffi` the tests and
+   `cmd/total` run **env-free**.
 
-To link against a release build instead, build with `--release` and edit the two
-`target/debug` paths in `obol.go` to `target/release` (or rebuild the debug dylib).
+On macOS under a hardened runtime with library validation, an unsigned extracted dylib may be
+rejected — point `OBOL_LIB` at a signed copy in that case.
 
 ## Usage
 
 ```go
-import "github.com/primeradiant/obol/bindings/go/obol"
+import "github.com/prime-radiant-inc/obol-go" // or the in-repo package during development
 
-obol.Version() // "0.1.0"
+obol.Version() // "0.1.0" (the Rust core version)
 
 est, err := obol.EstimatePath("transcript.jsonl", "claude") // "" dialect auto-detects
 // est.TotalUSD, est.PricingAsOf, est.PerModel[i].{Model,Provider,SubtotalUSD}
@@ -56,18 +59,23 @@ On a nonzero status the call returns an `*obol.ObolError` carrying `.Code`, `.Ki
 (the CLI), or point `OBOL_PRICING_DIR` at a directory containing `current.json`. With no
 snapshot the call returns an `*ObolError` with `Kind == "PricingTablesMissing"` (code 1).
 
+> Note: with `CGO_ENABLED=0` on Linux, a *runtime* `os.Setenv("OBOL_PRICING_DIR", …)` does **not**
+> reach the dlopen'd library's `getenv` (Go makes raw syscalls and never links libc). Set the var
+> **before** the process starts, or set it via libc `setenv` (the test suite does this in
+> `pricing_env_test.go`). Inherited environment is fine everywhere.
+
 ## Ownership & safety contract
 
-obol owns every string it returns through an out-parameter. This binding honors the contract
-in `drain`: it copies the obol-owned C string into a Go `[]byte` with `C.GoString` (which
-copies up to the NUL), **then** `defer`s `C.obol_string_free`, so the Rust-owned pointer never
-outlives the copy and is never freed twice. A `nil` out-pointer is handled. `obol_version`
-returns a static C string and is never freed. The public API returns plain Go structs — you
-manage none of this yourself.
+obol owns every string it returns through an out-parameter. This binding honors the contract in
+`drain`: it copies the obol-owned C string into a Go `[]byte` (`cstr` reads up to the NUL),
+**then** `defer`s `obol_string_free`, so the Rust-owned pointer never outlives the copy and is
+never freed twice. A zero out-pointer is handled. `obol_version` returns a static C string and is
+never freed. String/byte arguments are kept alive across the synchronous FFI call with
+`runtime.KeepAlive`. The public API returns plain Go structs — you manage none of this yourself.
 
 ## Tests
 
 ```bash
 mise exec rust@1.96.0 -- cargo build -p obol-ffi   # build the dylib first
-cd bindings/go && CGO_ENABLED=1 go test ./...
+cd bindings/go && CGO_ENABLED=0 go test ./...
 ```
