@@ -7,18 +7,24 @@ Rust core does all the accounting; this binding only `dlopen`s the cdylib and re
 ## Install
 
 ```sh
-bun install     # or: npm install
+npm install @primeradianthq/obol     # or: bun add @primeradianthq/obol
 ```
 
-Build the native library it loads (once, from the repo root):
+The published package **bundles the native library** for macOS (arm64 / x64) and Linux
+(x64 / arm64) — no `cargo build` needed for consumers, no postinstall, no network at install.
+Requires **Node 18+** (or Bun). Other platforms (Windows, musl/Alpine) aren't bundled yet and
+will get a clear "library not found" error.
+
+### From source (contributors)
+
+Running the binding straight from this repo (not the published package) needs the cdylib built:
 
 ```sh
 cargo build -p obol-ffi    # produces target/{debug,release}/libobol_ffi.{dylib,so}
 ```
 
-The binding finds the library via `$OBOL_LIB` (an explicit path) or, failing that, by looking in
-`target/release` then `target/debug` relative to the repo. Set `OBOL_LIB` if the library lives
-elsewhere.
+The library is resolved in order: `$OBOL_LIB` (explicit path) → the package's bundled
+`native/<platform>-<arch>/` (published installs) → `target/{release,debug}` (in-repo dev).
 
 ## Usage
 
