@@ -107,8 +107,20 @@ they don't use `exports` — pointing `exports` at `dist` does not break dev):
 ```
 
 `private: true` is removed (the release workflow is the only publisher; `publishConfig.access:
-public` + `provenance` are explicit). `dist/` is git-ignored (built artifact); `native/` is
-assembled at release time, never committed.
+public` + `provenance` are explicit). The `files` allowlist is doing real hygiene work — with it,
+`npm pack` is a clean 7-file tarball (`dist`, `native`, `README.md`, `package.json`); *without* it
+npm would pack `src/`, `test/`, `tsconfig.json`, `bun.lock`, etc. (verified).
+
+**`.gitignore` (required, not optional):** add `bindings/typescript/dist/` and
+`bindings/typescript/native/` so neither the built `dist/` nor a 2.2 MB platform-specific
+`native/<plat>/*.dylib` can be accidentally committed. `native/` is assembled only at release
+time; `dist/` is a build artifact. Without these ignores the "never committed" guarantee is
+unenforced.
+
+Note: `version()` (the binding's API) returns `obol_version()` from the dylib = the **Rust core
+crate** version (`0.1.0`), which is intentionally *decoupled* from the npm package version (stamped
+from the tag). `npm install @primeradianthq/obol@1.2.3` then `await version()` → `0.1.0`, not
+`1.2.3`. That's correct (it's the core-lib version), just a documented surprise.
 
 ## Release workflow (`.github/workflows/release.yml`)
 
@@ -116,7 +128,12 @@ Triggered on tag push `v*`. Two stages:
 
 1. **Build the 4 release dylibs** — a matrix mirroring CI's `test` matrix (`macos-14`,
    `macos-15-intel`, `ubuntu-24.04`, `ubuntu-24.04-arm`), each: `cargo build --release -p
-   obol-ffi` → `strip` → upload `libobol_ffi.<ext>` as an artifact named by `${platform}-${arch}`.
+   obol-ffi` → **strip (per-OS)** → upload `libobol_ffi.<ext>` as an artifact named by
+   `${platform}-${arch}`. **`strip` differs by OS and a plain `strip` FAILS on the macOS dylib**
+   (exits 1: "symbols referenced by indirect symbol table entries that can't be stripped"). Use
+   `strip -x` on the `macos-*` legs (strips local symbols, keeps the `_obol_*` exports — verified)
+   and plain `strip` on the `ubuntu-*` legs. A `RUNNER_OS`-conditional step, not one hardcoded
+   `strip`.
 2. **Pack & publish** (one `ubuntu-24.04` job, needs stage 1): download the 4 dylib artifacts into
    `bindings/typescript/native/<plat-arch>/`; `bun install`; `bun x tsup` (build `dist`); stamp
    the version from the tag (`npm pkg set version=${TAG#v}`); `npm publish` (with `provenance`).
@@ -165,8 +182,15 @@ publishing `obol-core`/`obol-cli`/`obol-ffi` to crates.io; automated changelog/r
 
 ## Open threads (small)
 
-- npm CLI version on the runner must be ≥11.5 for OIDC trusted publishing + provenance;
-  `actions/setup-node@v4` with Node 24 ships a recent npm, but the plan pins/upgrades npm
-  explicitly (`npm i -g npm@latest`) to be safe.
-- Confirm `bun x tsup` vs `npx tsup` on the runner — both work locally; the plan picks one
-  (likely `bun x` since `bun install` already ran).
+None blocking.
+
+> Resolved during spec review (Kira@ab69313d, reproduced against the real binding): tsup
+> `external:[bun:ffi,koffi]+splitting` keeps each adapter in its own chunk — `index.js` references
+> neither, Node never loads `bun:ffi` (built `dist` runs 0.000995 under both runtimes); `lib-path`
+> `../native` math correct in both `dist/` and `src/`; `typescript` pinned `^5.9` (6.0.3 errors,
+> and the project tsconfig has no baseUrl to `ignoreDeprecations`, so the pin is the clean fix);
+> koffi 2.16.2 prebuilds cover all 4 targets and load under `--ignore-scripts` (regular dep is
+> fine); `npm pack` clean 7 files; `exports`→`dist` doesn't break dev tests (5/5 still pass);
+> provenance works on the public repo. **`strip` must be per-OS** (folded into the workflow step).
+> npm on the Node-24 runner is already ≥11.x (no `npm i -g` needed). Use `bun x tsup` (bun install
+> already ran).
