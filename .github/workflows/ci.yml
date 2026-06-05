@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+      - name: rustfmt
+        run: mise exec rust@1.96.0 -- cargo fmt --check
+      - name: clippy
+        run: mise exec rust@1.96.0 -- cargo clippy --all-targets --workspace -- -D warnings
+
+  test:
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, name: macos-arm64 }
+          - { os: macos-15-intel, name: macos-x64 }
+          - { os: ubuntu-24.04, name: linux-x64 }
+          - { os: ubuntu-24.04-arm, name: linux-arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: python -m pip install --quiet pytest
+
+      - name: Build cdylib
+        run: mise exec rust@1.96.0 -- cargo build -p obol-ffi
+
+      - name: Rust tests
+        run: mise exec rust@1.96.0 -- cargo test --workspace -- --test-threads=1
+
+      - name: Python binding tests
+        working-directory: bindings/python
+        run: PYTHONPATH=. python -m pytest tests -q
+
+      - name: Go binding tests
+        working-directory: bindings/go
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/target/debug"
+          fi
+          go test ./...
+
+      - name: TypeScript binding tests (Bun + Node)
+        working-directory: bindings/typescript
+        run: |
+          bun install
+          bun test
+          node --test test/obol.test.ts
+
+      - name: Five-language equivalence gate
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/target/debug"
+          fi
+          ./scripts/validate_bindings.sh
