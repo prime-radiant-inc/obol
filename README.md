@@ -1,5 +1,7 @@
 # obol
 
+[![CI](https://github.com/prime-radiant-inc/obol/actions/workflows/ci.yml/badge.svg)](https://github.com/prime-radiant-inc/obol/actions/workflows/ci.yml)
+
 Read an AI-agent transcript and estimate what it cost. `obol` parses Claude Code and
 Codex session files, extracts per-message token usage (with the dedup, cache-bucket, and
 price-tier handling naive summers get wrong), and prices it against a LiteLLM snapshot.
