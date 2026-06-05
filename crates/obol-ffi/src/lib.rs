@@ -344,4 +344,24 @@ mod tests {
         let code = obol_refresh_pricing(as_of.as_ptr(), std::ptr::null_mut());
         assert_eq!(code, ERR_INVALID_ARG);
     }
+
+    #[test]
+    fn header_matches_source() {
+        let crate_dir = env!("CARGO_MANIFEST_DIR");
+        let committed = std::fs::read_to_string(format!("{crate_dir}/include/obol.h")).unwrap();
+        // cbindgen 0.27 `Bindings` implements neither Display nor ToString — write into a buffer.
+        let config = cbindgen::Config::from_file(format!("{crate_dir}/cbindgen.toml")).unwrap();
+        let bindings = cbindgen::Builder::new()
+            .with_crate(crate_dir)
+            .with_config(config)
+            .generate()
+            .expect("cbindgen generation failed");
+        let mut buf: Vec<u8> = Vec::new();
+        bindings.write(&mut buf);
+        let generated = String::from_utf8(buf).unwrap();
+        assert_eq!(
+            committed, generated,
+            "include/obol.h is stale — run ./scripts/gen-header.sh and commit the result"
+        );
+    }
 }

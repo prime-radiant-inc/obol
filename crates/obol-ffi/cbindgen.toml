@@ -1,0 +1,11 @@
+language = "C"
+include_guard = "OBOL_H"
+tab_width = 4
+documentation = true
+documentation_style = "c"
+
+[parse]
+parse_deps = false
+
+[export]
+prefix = ""
