@@ -18,8 +18,11 @@ Prerelease tags (`v1.2.3-rc.1`) publish to the `next` dist-tag, not `latest`.
 npm can't attach a trusted publisher to a package that doesn't exist yet, so the **first** publish
 uses a token; every release after is tokenless OIDC.
 
-1. **Create a granular automation token** on npmjs.com scoped to publish `@primeradianthq/*`.
-   Add it as the repo secret **`NPM_TOKEN`** (Settings → Secrets and variables → Actions).
+1. **Create a classic _Automation_ token** on npmjs.com (Access Tokens → Generate New Token →
+   **Classic Token → Automation**). The **Automation** type is the one that **bypasses 2FA/OTP** —
+   CI can't answer an OTP prompt, so a "Publish" classic token or a 2FA-bound granular token fails
+   with `npm error code EOTP`. Add it as the repo secret **`NPM_TOKEN`** (Settings → Secrets and
+   variables → Actions).
 2. **Push the first tag** (`git tag v0.1.0 && git push origin v0.1.0`). The workflow publishes via
    the token and creates the package.
 3. **Configure the trusted publisher** on npmjs.com for the now-existing `@primeradianthq/obol`:
