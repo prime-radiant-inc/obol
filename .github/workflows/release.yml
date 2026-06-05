@@ -47,7 +47,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
       - name: Pin npm (trusted publishing + provenance need >= 11.5.1)
         run: npm install -g npm@^11.5.1
       - uses: oven-sh/setup-bun@v2
@@ -70,25 +69,18 @@ jobs:
           bun install
           bun x tsup
           npm pkg set version="${GITHUB_REF_NAME#v}"
-      - name: Publish to npm
+      - name: Publish to npm (OIDC trusted publishing)
         working-directory: bindings/typescript
-        # Prerelease versions (v1.2.3-rc.1) go to the `next` dist-tag, not `latest`.
-        # Token path (bootstrap): setup-node's .npmrc carries the token. OIDC path (post-bootstrap,
-        # secret deleted): remove .npmrc so an empty `_authToken=` line can't block OIDC activation
-        # (npm >= 11.5.1 then authenticates via the trusted publisher). provenance:true works on
-        # either path (public repo + id-token: write); no --provenance flag needed.
+        # Tokenless: npm classic tokens are deprecated, so the bootstrap (package creation) is a
+        # one-time MANUAL publish from a maintainer's machine; every CI release after authenticates
+        # via the configured Trusted Publisher (OIDC). No `.npmrc` token line — an empty
+        # `_authToken=` would block OIDC activation. provenance:true (in package.json) works because
+        # the repo is public and the job has `id-token: write`. Prerelease tags → `next` dist-tag.
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           DIST_TAG="latest"; case "$VERSION" in *-*) DIST_TAG="next";; esac
-          if [ -n "$NPM_TOKEN" ]; then
-            npm publish --tag "$DIST_TAG"
-          else
-            rm -f "$HOME/.npmrc"
-            npm publish --tag "$DIST_TAG"
-          fi
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          rm -f "$HOME/.npmrc"
+          npm publish --tag "$DIST_TAG"
       - name: GitHub Release with dylibs
         uses: softprops/action-gh-release@v2
         with:
