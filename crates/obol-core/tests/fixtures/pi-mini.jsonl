@@ -1,0 +1,6 @@
+{"type":"session","version":3,"id":"abc","cwd":"/work/src"}
+{"type":"turn_start"}
+{"type":"message_update","message":{"content":"streaming delta — ignore me"}}
+{"type":"turn_end","message":{"model":"gpt-5.4","provider":"openai-codex","usage":{"input":15024,"output":251,"cacheRead":12288,"cacheWrite":0,"totalTokens":27563,"cost":{"total":0.044}}}}
+{"type":"turn_end","message":{"model":"tencent/hy3-preview","provider":"openrouter","usage":{"input":6412,"output":574,"cacheRead":5760,"cacheWrite":0,"totalTokens":12746,"cost":{"total":0.0007}}}}
+{"type":"turn_end","message":{"model":"x","provider":"openai","usage":{}}}

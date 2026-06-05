@@ -1,5 +1,6 @@
 pub mod claude;
 pub mod codex;
+pub mod pi;
 
 use crate::error::ObolError;
 use crate::model::MessageUsage;
