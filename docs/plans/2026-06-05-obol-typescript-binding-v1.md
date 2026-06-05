@@ -46,6 +46,13 @@ users (no back-compat shims). One commit per task.
 - Fixtures already exist: `bindings/testdata/prices.json` (prices `claude-opus-4-8`) and
   `bindings/testdata/claude-mini.jsonl`. Seed `OBOL_PRICING_DIR` by copying `prices.json` →
   `$DIR/current.json`. Expected `total_usd = 0.000995`, `pricing_as_of = "2026-06-05"`.
+- **Bun does NOT propagate runtime `process.env` writes to the native environment** that
+  `bun:ffi`'s C calls see — so Rust's `getenv("OBOL_PRICING_DIR")` (read per-call) ignores a
+  `process.env.OBOL_PRICING_DIR = …` set *after* startup under Bun (Node propagates fine). Tests
+  that change the pricing dir at runtime therefore MUST route through a cross-runtime helper that,
+  under Bun, calls libc `setenv`/`unsetenv` via FFI (Task 1 Step 9). Setting the env in the shell
+  *before* launching (as the equivalence gate does) is unaffected — only runtime JS mutation needs
+  the helper. This is the single non-obvious trap in this binding.
 
 ---
 
@@ -59,6 +66,7 @@ users (no back-compat shims). One commit per task.
 - Create: `bindings/typescript/src/ffi.ts`
 - Create: `bindings/typescript/src/ffi-bun.ts`
 - Create: `bindings/typescript/src/index.ts`
+- Create: `bindings/typescript/test/pricing-env.ts`
 - Create: `bindings/typescript/test/obol.test.ts`
 
 - [ ] **Step 1: Build the cdylib** (the binding loads it): `mise exec rust@1.96.0 -- cargo build -p obol-ffi`. Confirm `target/debug/libobol_ffi.dylib` exists.
@@ -309,8 +317,53 @@ export { ObolError } from "./types.ts";
 export type { CostEstimate, ModelCost, TokenBuckets, Approximation, RefreshReport, Dialect } from "./types.ts";
 ```
 
-- [ ] **Step 9: Write `bindings/typescript/test/obol.test.ts`** (the matrix; `node:test`/`node:assert`
-  so the one file runs under both runtimes):
+- [ ] **Step 9: Write `bindings/typescript/test/pricing-env.ts`** (cross-runtime pricing-dir
+  control — the fix for the Bun runtime-env trap in "Critical facts"). Under Bun it also calls libc
+  `setenv`/`unsetenv` so the change reaches Rust's `getenv`; under Node `process.env` alone
+  suffices. The native `setenv` also overrides any stale global `~/.local/share/obol`, so tests are
+  robust regardless of the host's global pricing dir:
+
+```ts
+// Cross-runtime control of OBOL_PRICING_DIR for tests.
+// Bun does NOT sync runtime `process.env` writes to the native env that bun:ffi's C calls (and
+// Rust's getenv) observe, so under Bun we must call libc setenv/unsetenv. Node propagates
+// process.env to getenv natively, so there process.env alone is enough.
+const KEY = "OBOL_PRICING_DIR";
+const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
+
+interface LibcEnv {
+  setenv(k: Uint8Array, v: Uint8Array, overwrite: number): number;
+  unsetenv(k: Uint8Array): number;
+}
+let libc: LibcEnv | undefined;
+async function nativeEnv(): Promise<LibcEnv> {
+  if (libc) return libc;
+  const { dlopen, FFIType } = await import("bun:ffi");
+  const name = process.platform === "darwin" ? "libSystem.dylib" : "libc.so.6";
+  const { symbols } = dlopen(name, {
+    setenv: { args: [FFIType.cstring, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
+    unsetenv: { args: [FFIType.cstring], returns: FFIType.i32 },
+  });
+  libc = symbols as unknown as LibcEnv;
+  return libc;
+}
+
+export async function setPricingDir(dir: string): Promise<void> {
+  process.env[KEY] = dir;
+  if (isBun) (await nativeEnv()).setenv(Buffer.from(KEY + "\0"), Buffer.from(dir + "\0"), 1);
+}
+
+export async function clearPricingDir(): Promise<void> {
+  delete process.env[KEY];
+  if (isBun) (await nativeEnv()).unsetenv(Buffer.from(KEY + "\0"));
+}
+```
+
+  (Node never calls `nativeEnv`, so it never imports `bun:ffi`.)
+
+- [ ] **Step 10: Write `bindings/typescript/test/obol.test.ts`** (the matrix; `node:test`/
+  `node:assert` so the one file runs under both runtimes; pricing-dir changes go through the
+  helper):
 
 ```ts
 import { test } from "node:test";
@@ -320,15 +373,16 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as obol from "../src/index.ts";
+import { setPricingDir, clearPricingDir } from "./pricing-env.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TESTDATA = join(HERE, "..", "..", "testdata"); // test -> typescript -> bindings, then /testdata
 const TRANSCRIPT = join(TESTDATA, "claude-mini.jsonl");
 
-function seed(): string {
+async function seed(): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "obol-ts-"));
   copyFileSync(join(TESTDATA, "prices.json"), join(dir, "current.json"));
-  process.env.OBOL_PRICING_DIR = dir;
+  await setPricingDir(dir);
   return dir;
 }
 
@@ -337,31 +391,31 @@ test("version", async () => {
 });
 
 test("estimatePath success", async () => {
-  const dir = seed();
+  const dir = await seed();
   try {
     const est = await obol.estimatePath(TRANSCRIPT, "claude");
     assert.ok(est.total_usd > 0, `total_usd=${est.total_usd}`);
     assert.equal(est.pricing_as_of, "2026-06-05");
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    delete process.env.OBOL_PRICING_DIR;
+    await clearPricingDir();
   }
 });
 
 test("estimateBytes autodetect", async () => {
-  const dir = seed();
+  const dir = await seed();
   try {
     const data = readFileSync(TRANSCRIPT); // Buffer is a Uint8Array
     const est = await obol.estimateBytes(data);
     assert.ok(est.total_usd > 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    delete process.env.OBOL_PRICING_DIR;
+    await clearPricingDir();
   }
 });
 
 test("missing tables -> ObolError code 1", async () => {
-  process.env.OBOL_PRICING_DIR = "/nonexistent/obol-ts-xyz";
+  await setPricingDir("/nonexistent/obol-ts-xyz");
   try {
     const data = readFileSync(TRANSCRIPT);
     await assert.rejects(
@@ -369,12 +423,12 @@ test("missing tables -> ObolError code 1", async () => {
       (e: unknown) => e instanceof obol.ObolError && e.code === 1 && e.kind === "PricingTablesMissing",
     );
   } finally {
-    delete process.env.OBOL_PRICING_DIR;
+    await clearPricingDir();
   }
 });
 
 test("unknown dialect -> ObolError code 7", async () => {
-  const dir = seed();
+  const dir = await seed();
   try {
     const data = readFileSync(TRANSCRIPT);
     await assert.rejects(
@@ -383,7 +437,7 @@ test("unknown dialect -> ObolError code 7", async () => {
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    delete process.env.OBOL_PRICING_DIR;
+    await clearPricingDir();
   }
 });
 ```
@@ -391,16 +445,19 @@ test("unknown dialect -> ObolError code 7", async () => {
   Note the `TESTDATA` path: from `bindings/typescript/test/`, two `..` reach `bindings/`, then
   `testdata` → `bindings/testdata`.
 
-- [ ] **Step 10: Install deps and run the Bun tests.** From `bindings/typescript`:
+- [ ] **Step 11: Install deps and run the Bun tests.** From `bindings/typescript`:
 
 ```bash
 cd bindings/typescript && bun install && bun test
 ```
 
-Expected: 5 pass (version, estimatePath success, estimateBytes autodetect, missing-tables → code 1,
-unknown-dialect → code 7). The loader's `target/debug` fallback finds the dylib with no env.
+Expected: **5 pass** (version, estimatePath success, estimateBytes autodetect, missing-tables →
+code 1, unknown-dialect → code 7). The loader's `target/debug` fallback finds the dylib with no
+env, and the helper's native `setenv` makes the seeded pricing dir reach Rust under Bun (and
+overrides any stale global `~/.local/share/obol`). If `pricing_as_of` comes back as anything other
+than `2026-06-05`, the helper isn't being used for a seed call.
 
-- [ ] **Step 11: Commit.**
+- [ ] **Step 12: Commit.**
 
 ```bash
 git add bindings/typescript
@@ -505,7 +562,11 @@ Expected: 5 pass (still).
   (`bun:ffi`, zero runtime deps) and Node (`koffi`); the ownership note (the adapter copies the
   obol-owned string then frees it — callers never touch pointers); that the cdylib must be built
   (`cargo build -p obol-ffi`) or pointed at via `OBOL_LIB`; and that pricing tables must exist
-  (`obol refresh` or a seeded `OBOL_PRICING_DIR`).
+  (`obol refresh` or a seeded `OBOL_PRICING_DIR`). **Include the Bun env caveat:** set
+  `OBOL_PRICING_DIR`/`OBOL_LIB` *in the environment before launching* — under Bun, mutating
+  `process.env` at runtime does not reach the native library (Rust reads the OS env via `getenv`),
+  so a runtime `process.env.OBOL_PRICING_DIR = …` is silently ignored under Bun (it works under
+  Node). One sentence is enough.
 
 - [ ] **Step 7: Commit.**
 
