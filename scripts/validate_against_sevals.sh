@@ -60,9 +60,19 @@ sevals_line() {  # <file> <family>
   ( cd "$SEVALS" && SEVALS_FILE="$1" SEVALS_FAMILY="$2" uv run python "$TMP/sevals_fmt.py" )
 }
 
+# The corpus of real session logs is NOT shipped in this repo (it contained real
+# transcripts). Point CORPUS_DIR at a directory holding `claude/` and `codex/`
+# subdirs of `.jsonl` session files to re-run this differential check.
+CORPUS_DIR="${CORPUS_DIR:-$REPO/tests/corpus}"
+if [ ! -d "$CORPUS_DIR/claude" ] && [ ! -d "$CORPUS_DIR/codex" ]; then
+  echo "no corpus found under $CORPUS_DIR (set CORPUS_DIR=/path/to/sessions)" >&2
+  exit 1
+fi
+
 for pair in "claude:claude" "codex:codex"; do
   dir="${pair%%:*}"; dialect="${pair##*:}"
-  for f in "$REPO"/tests/corpus/"$dir"/*.jsonl; do
+  for f in "$CORPUS_DIR/$dir"/*.jsonl; do
+    [ -e "$f" ] || continue
     echo "== $dir $(basename "$f") =="
     obol_line   "$f" "$dialect"
     sevals_line "$f" "$dir"
