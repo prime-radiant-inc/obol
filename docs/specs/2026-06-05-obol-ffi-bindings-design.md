@@ -57,9 +57,34 @@ obol-core, it isn't in the FFI.
 (`PathBuf` serializes as a string; harmless, and lets the CLI gain `refresh --json` later).
 That is the *only* change to obol-core. Everything else is new code in `obol-ffi`.
 
+### The JSON shape bindings re-type (so they mirror it exactly)
+
+From `CostEstimate` (`model.rs`): `total_usd: f64`, `per_model: [{model: string, provider:
+string, tokens: {input,output,cache_read,cache_write: u64}, subtotal_usd: f64}]`, `tokens:
+{…same four…}`, `unpriced_models: [string]`, `approximations: [...]`, `pricing_as_of: string`.
+Two shape subtleties the hand-typed structs must honor:
+
+- **`provider` is a lowercase string**, not an object — `Provider` has a custom `Serialize`
+  emitting its label (`"anthropic"`, `"openai"`, `"openrouter"`, or the raw `Other` string).
+- **`approximations` is an internally-tagged union**: `#[serde(tag="kind", content="detail")]`
+  → `{"kind":"UnpricedModel","detail":"…"}` or `{"kind":"AssumedStandardTier"}` (no detail).
+  Bindings type this as a small tagged record, not a bare string.
+
+`RefreshReport` JSON: `{models: u64, as_of: string, written_to: string}` — `written_to` is a
+path-as-string.
+
 ## The C ABI surface
 
-Six functions. Exact signatures (as they will appear in `obol.h`):
+Six functions. Signatures below show the **C types cbindgen will actually emit** — note
+`uintptr_t` for the Rust `usize` (cbindgen maps `usize → uintptr_t`, not `size_t`; ABI-
+identical, and we avoid a `libc` dependency just to rename it). The committed header is
+whatever cbindgen produces, and the drift test enforces exactly that, so this sample is kept
+honest rather than idealized.
+
+**ABI constraints (what makes cbindgen emit a correct header):** every exported function is
+`#[no_mangle] pub extern "C"`; param types are `*const c_char` (`std::os::raw::c_char`),
+`*const u8`, `usize`, the out-param `*mut *mut c_char`, and an `i32` return. No Rust structs
+cross the boundary — only C strings and integers — so there are no `repr(C)` concerns.
 
 ```c
 /* Estimate cost from a transcript file on disk.
@@ -75,7 +100,7 @@ int32_t obol_estimate_path(const char *path, const char *dialect, char **out_jso
  *   data : pointer to len bytes (borrowed; obol copies what it needs). Non-NULL.
  *   len  : length in bytes.
  *   dialect / out_json : as above. */
-int32_t obol_estimate_bytes(const uint8_t *data, size_t len,
+int32_t obol_estimate_bytes(const uint8_t *data, uintptr_t len,
                             const char *dialect, char **out_json);
 
 /* Refresh pricing tables (network: pulls LiteLLM + OpenRouter sheets).
@@ -91,7 +116,11 @@ void obol_string_free(char *s);
 const char *obol_version(void);
 ```
 
-`int32_t`/`size_t`/`uint8_t` via `<stdint.h>`/`<stddef.h>` (cbindgen emits the includes).
+`obol_version` returns a true `'static` pointer — implemented as
+`concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr()` (a `&'static CStr`), **not**
+`CString::into_raw` (which would leak on every call and contradict "do NOT free").
+
+`int32_t`/`uint8_t`/`uintptr_t` via `<stdint.h>` (cbindgen emits the includes).
 
 ### Status codes
 
@@ -115,9 +144,26 @@ The integer is the fast path. **Detail always travels in `out_json`** as an erro
 { "error": { "code": 3, "kind": "MalformedTranscript", "message": "malformed transcript at line 12: ..." } }
 ```
 
-So a binding can either switch on the int or parse the envelope — both agree. `out_json`
-is *always* written on every non-crashing return, success or error, so the caller's
-free-path is uniform (one `obol_string_free` regardless of outcome).
+So a binding can either switch on the int or parse the envelope — both agree.
+
+**Mapping:** codes 1–6 are produced by matching the returned `ObolError` variant; the
+envelope `message` is `err.to_string()` (thiserror's `Display`, e.g. "malformed transcript at
+line 12: …"). Codes 7 (invalid argument) and 8 (panic) have **no** `ObolError` behind them —
+their envelope is synthesized directly in the FFI.
+
+**The NULL-init invariant (closes the panic double-free hazard):** the *very first* action of
+every estimate/refresh function (when `out_json != NULL`) is `*out_json = ptr::null_mut()`.
+Then the body runs inside `catch_unwind`. Consequences:
+
+- Success → `*out_json` = the result JSON (obol-owned).
+- Handled error (1–7) → `*out_json` = the error envelope.
+- Panic (8) → the unwind is caught; the FFI writes a best-effort envelope, but even if *that*
+  allocation fails, `*out_json` is still the clean NULL from the first action — never garbage.
+
+So `out_json` is **always a well-defined pointer** (a valid string or NULL) on every
+non-crashing return, and `obol_string_free(NULL)` is a documented no-op. The caller's
+free-path is therefore uniform and safe: one `obol_string_free(*out_json)` regardless of
+outcome, with no risk of freeing an uninitialized pointer.
 
 ## Ownership & safety contract (the load-bearing section)
 
@@ -127,19 +173,36 @@ This is where FFI bindings live or die. The rules, stated once, enforced everywh
    only. obol copies whatever it needs before returning. The caller may free them
    immediately after the call returns. obol never retains a pointer to caller memory.
 
-2. **Outputs are obol-owned.** Every `*out_json` is allocated by Rust
-   (`CString::into_raw`). The caller **must** return it via `obol_string_free`
+2. **Outputs are obol-owned.** Every `*out_json` is allocated by Rust via
+   `CString::new(json)?.into_raw()`. The `new` step is handled as a `Result` (never
+   unwrapped): serde_json output can't contain an interior NUL — it escapes NUL as
+   ` ` — so this cannot fail in practice, but a failure maps to an error rather than a
+   panic. The caller **must** return the pointer via `obol_string_free`
    (`CString::from_raw` + drop), which uses Rust's allocator. Freeing it with libc `free`
    or any other allocator is undefined behavior. `obol_string_free(NULL)` is a safe no-op.
 
-3. **No unwinding across the boundary.** Every extern function body is wrapped in
-   `std::panic::catch_unwind`. A panic is converted to status 8 with a generic envelope —
-   it never propagates into C (which would be UB). The catch is the outermost layer of
-   each function.
+3. **No unwinding across the boundary.** Every extern function body runs inside
+   `std::panic::catch_unwind(AssertUnwindSafe(|| …))`. `AssertUnwindSafe` is required because
+   the closure captures the raw out-pointer and is **sound here** for a concrete reason: the
+   obol-core call path holds no `Mutex`/lock across the boundary and shares no mutable state,
+   so there is no poison/broken-invariant concern — the only thing mutated on a panic is
+   local. A caught panic becomes status 8; it never propagates into C (which would be UB).
+   `catch_unwind` is the outermost layer of each function, *after* the NULL-init of `out_json`
+   (see Status codes) so the panic path leaves a freeable NULL, not garbage.
 
 4. **NULL handling.** NULL `out_json` → status 7, nothing written (no pointer to write to).
    NULL `path`/`data`/`as_of` where required → status 7 with an envelope written only if
-   `out_json` is non-NULL. NULL `dialect` → auto-detect (the `Option<Dialect>::None` path).
+   `out_json` is non-NULL. `data == NULL` → status 7 regardless of `len`; `len == 0` with a
+   non-NULL `data` is *valid* and flows to a normal `UnknownDialect`/malformed error from
+   core (not a crash). NULL `dialect` → auto-detect (the `Option<Dialect>::None` path).
+
+7. **Dialect-string parsing is the FFI's own, and validating.** The FFI matches `dialect`
+   exhaustively: `"claude"`/`"codex"`/`"pi"` → the variant, NULL → auto-detect, **anything
+   else → status 7**. It does *not* reuse the CLI's `_ => Dialect::Pi` fallthrough
+   (`obol-cli/src/main.rs`), which is only safe there because clap's `value_parser` rejects
+   unknown strings first — there is no such gate in the FFI, so an unknown string must error,
+   not silently become Pi. obol-core exposes no shared `Dialect` string parser, and we do not
+   add one (it'd be an unused core API — YAGNI); the small match lives in the FFI.
 
 5. **Thread-safety.** `obol_estimate_*` is reentrant and `Send`-safe: it holds no shared
    mutable state, loads the price snapshot fresh, and touches only borrowed/owned memory.
@@ -160,12 +223,15 @@ each binding's README, because the binding author is the one who has to honor th
 - Config: `crates/obol-ffi/cbindgen.toml` (C output, `obol_`-prefixed, include guard,
   `#include <stdint.h>`/`<stddef.h>`, the ownership contract as a file header comment).
 - Regeneration: `scripts/gen-header.sh` runs `cbindgen --config … --output include/obol.h`.
-- Drift guard: a test in obol-ffi (`header_matches_source`) regenerates the header to a
-  temp file via the `cbindgen` *library* (a build/dev-dependency) and asserts it byte-equals
-  the committed `include/obol.h`. This fails CI-or-local if someone changes an extern
+- Drift guard: a test in obol-ffi (`header_matches_source`) regenerates the header via the
+  `cbindgen` *library* (a dev-dependency) and asserts it byte-equals the committed
+  `include/obol.h`. **The test loads the same `cbindgen.toml` the script uses**
+  (`cbindgen::Config::from_file`), so it is a true mirror of `gen-header.sh`, not a
+  reconstructed config that could drift from it. This fails if someone changes an extern
   signature without regenerating — cheap insurance, no build.rs writing into the source tree.
-  (If `cbindgen` as a dependency proves heavy, the fallback is: commit the header, document
-  the script, drop the test. Decision: keep the test; it is the simple-but-quality choice.)
+  (If the `cbindgen` dev-dep proves too heavy, the documented fallback is: commit the header,
+  keep the script, drop the test. Decision: keep the test; it is the simple-but-quality choice
+  for a correctness-critical ABI.)
 
 Committing the header means binding builds (Go especially) never need cbindgen installed.
 
@@ -187,9 +253,12 @@ serde_json = { workspace = true }
 cbindgen = "0.27"   # for the header-drift test only
 ```
 
-Added to workspace `members`. Builds to `target/{debug,release}/libobol_ffi.{dylib,so,a}`
-(note: cdylib name is `libobol_ffi` from crate `obol-ffi`; bindings locate it by that name,
-or we set a `[lib] name = "obol_ffi"` explicitly and document the artifact path).
+Added to workspace `members`. **Artifact name is determined, not open:** Cargo derives the
+lib name from the package name with hyphens→underscores, so package `obol-ffi` → lib
+`obol_ffi` → `target/{debug,release}/libobol_ffi.{dylib,so,a}`. **No `[lib] name` override
+needed.** cgo links `-lobol_ffi`; ctypes loads `libobol_ffi.<ext>`. Both bindings locate the
+artifact by that fixed name. `staticlib` is kept (one word, real future value for cgo static
+builds) but adds no test surface in this cut — the bindings use the cdylib.
 
 ## Binding: Python (ctypes)
 
@@ -257,10 +326,16 @@ bindings/go/
   fields; assert `ObolError` raised on a missing-tables run.
 - **Go tests:** `go test` over the same fixture; assert `TotalUSD > 0`; assert error type.
 - **Cross-language equivalence (acceptance):** the Rust CLI, the Python binding, and the Go
-  binding run over the *same* transcript with the *same* pricing snapshot must produce the
-  *same* `total_usd` (to JSON float equality). One script, `scripts/validate_bindings.sh`,
-  seeds a snapshot, runs all three, and diffs the totals. This is the proof the seam is
-  faithful — the same number out of three languages.
+  binding run over the *same* transcript with the *same* pricing snapshot must surface the
+  *same* `total_usd`. Don't diff *formatted* floats (Python `repr` vs Go `%v` vs shell
+  `printf` can format the same f64 differently and produce false failures). Instead the gate
+  extracts the **raw `total_usd` JSON token** each language emits and asserts the three tokens
+  are **byte-identical** — which they will be, because all three deserialize the *same* JSON
+  string produced by the *same* serde_json f64 serializer (and an f64 round-trips exactly
+  through Python `float` / Go `float64`). That byte-equality is the true proof the seam is
+  faithful. One script, `scripts/validate_bindings.sh`, seeds a snapshot, runs all three, and
+  compares the tokens. (Per-language unit tests separately assert `total_usd > 0` as the
+  "the binding actually executed" signal.)
 
 ## Repo topology
 
@@ -279,9 +354,14 @@ now everything lives together so the equivalence test can run all three from one
 
 ## Open threads (small)
 
-- Exact cdylib artifact name (`libobol_ffi` vs forcing `[lib] name`): pick whichever yields
-  the cleanest, most predictable path for both bindings to locate; document it once.
-- Whether the `cbindgen` dev-dependency is worth the build weight for the drift test, or
-  whether the lighter "script + documented regen" path is better. Lean: keep the test.
 - Go in-tree dev linking ergonomics (LDFLAGS pointing at `target/debug`) — make the test
-  hermetic via env so `go test` works from a fresh checkout after a `cargo build`.
+  hermetic via env (e.g. `CGO_LDFLAGS`/an env-driven build) so `go test` works from a fresh
+  checkout after a `cargo build`, without hand-editing paths. This is the one genuinely open
+  implementation detail; the plan should pick a concrete mechanism.
+
+> Resolved during spec review (Bender@af68a79d): artifact name is `libobol_ffi` (no `[lib]`
+> override); keep the cbindgen drift test (load the shared `cbindgen.toml`); `usize` emits as
+> `uintptr_t`; equivalence gate compares raw JSON tokens, not formatted floats; FFI owns its
+> own validating dialect match (no `_ => Pi` fallthrough); `out_json` is NULL-initialized
+> first so the caught-panic path is free-safe; `catch_unwind` uses `AssertUnwindSafe` (sound:
+> no locks held across the boundary).
