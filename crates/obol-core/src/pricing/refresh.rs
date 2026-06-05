@@ -180,6 +180,6 @@ mod tests {
         assert_eq!(opus.tier_boundary, None);
         let hy3 = t.get("tencent/hy3-preview").unwrap();
         assert!((hy3.input - 0.066).abs() < 1e-6);
-        assert!(t.get("weird/no-pricing").is_none());
+        assert!(!t.contains_key("weird/no-pricing"));
     }
 }
