@@ -38,7 +38,7 @@ pub fn estimate(usages: &[MessageUsage], store: &PriceStore) -> CostEstimate {
 
         let entry = per_model.entry(u.model.clone()).or_insert_with(|| ModelCost {
             model: u.model.clone(),
-            provider: u.provider,
+            provider: u.provider.clone(),
             tokens: TokenBuckets::default(),
             subtotal_usd: 0.0,
         });

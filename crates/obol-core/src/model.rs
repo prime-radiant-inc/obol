@@ -2,11 +2,29 @@
 
 use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Provider {
     Anthropic,
     OpenAI,
+    OpenRouter,
+    Other(String),
+}
+
+impl Provider {
+    pub fn label(&self) -> &str {
+        match self {
+            Provider::Anthropic => "anthropic",
+            Provider::OpenAI => "openai",
+            Provider::OpenRouter => "openrouter",
+            Provider::Other(s) => s.as_str(),
+        }
+    }
+}
+
+impl serde::Serialize for Provider {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.label())
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -62,6 +80,13 @@ pub struct MessageUsage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_serializes_as_lowercase_string() {
+        assert_eq!(serde_json::to_value(Provider::OpenRouter).unwrap(), serde_json::json!("openrouter"));
+        assert_eq!(serde_json::to_value(Provider::Other("bedrock".into())).unwrap(), serde_json::json!("bedrock"));
+        assert_eq!(serde_json::to_value(Provider::OpenAI).unwrap(), serde_json::json!("openai"));
+    }
 
     #[test]
     fn cost_estimate_serializes_with_expected_fields() {
