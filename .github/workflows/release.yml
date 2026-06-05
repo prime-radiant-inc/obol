@@ -81,8 +81,15 @@ jobs:
           DIST_TAG="latest"; case "$VERSION" in *-*) DIST_TAG="next";; esac
           rm -f "$HOME/.npmrc"
           npm publish --tag "$DIST_TAG"
+      - name: Stage release assets (arch-qualified names — basenames collide otherwise)
+        run: |
+          mkdir -p /tmp/assets
+          cp /tmp/dylibs/dylib-darwin-arm64/libobol_ffi.dylib /tmp/assets/libobol_ffi-darwin-arm64.dylib
+          cp /tmp/dylibs/dylib-darwin-x64/libobol_ffi.dylib   /tmp/assets/libobol_ffi-darwin-x64.dylib
+          cp /tmp/dylibs/dylib-linux-x64/libobol_ffi.so       /tmp/assets/libobol_ffi-linux-x64.so
+          cp /tmp/dylibs/dylib-linux-arm64/libobol_ffi.so     /tmp/assets/libobol_ffi-linux-arm64.so
       - name: GitHub Release with dylibs
         uses: softprops/action-gh-release@v2
         with:
-          files: /tmp/dylibs/dylib-*/libobol_ffi.*
+          files: /tmp/assets/libobol_ffi-*
           fail_on_unmatched_files: true
