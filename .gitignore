@@ -7,3 +7,7 @@
 
 # TypeScript binding installed deps (koffi; restored by bun/npm install)
 /bindings/typescript/node_modules
+
+# TypeScript binding build outputs (dist built by tsup; native/ assembled at release time)
+/bindings/typescript/dist
+/bindings/typescript/native

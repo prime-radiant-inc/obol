@@ -1,12 +1,18 @@
 {
-  "name": "obol",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@primeradianthq/obol",
+  "version": "0.0.0",
   "license": "Apache-2.0",
   "type": "module",
   "description": "Agent-transcript cost estimation — TypeScript binding over the obol C ABI (Bun + Node).",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": {
-    "koffi": "2.16.2"
-  }
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist", "native", "README.md"],
+  "engines": { "node": ">=18" },
+  "dependencies": { "koffi": "2.16.2" },
+  "devDependencies": { "tsup": "^8.5", "typescript": "^5.9" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prime-radiant-inc/obol.git",
+    "directory": "bindings/typescript"
+  },
+  "publishConfig": { "access": "public", "provenance": true }
 }

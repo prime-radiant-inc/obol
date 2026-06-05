@@ -18,16 +18,21 @@ export function resolveLibPath(): string {
     if (existsSync(env)) return env;
   }
   const name = libFilename();
-  // this file: bindings/typescript/src/lib-path.ts — repo root is three up from src/
   const here = dirname(fileURLToPath(import.meta.url));
-  const repo = join(here, "..", "..", ".."); // src -> typescript -> bindings -> repo
+  // Published layout: this file is under dist/, dylibs under ../native/<platform>-<arch>/.
+  // In dev (running src/), ../native doesn't exist and we fall through to target/.
+  const bundled = join(here, "..", "native", `${process.platform}-${process.arch}`, name);
+  tried.push(bundled);
+  if (existsSync(bundled)) return bundled;
+  // Dev: repo-relative target/{release,debug} (src -> typescript -> bindings -> repo).
+  const repo = join(here, "..", "..", "..");
   for (const profile of ["release", "debug"]) {
     const p = join(repo, "target", profile, name);
     tried.push(p);
     if (existsSync(p)) return p;
   }
   throw new Error(
-    "obol_ffi shared library not found. Set OBOL_LIB or run `cargo build -p obol-ffi`. Tried:\n  " +
+    "obol_ffi shared library not found. Set OBOL_LIB or install a platform with a bundled lib. Tried:\n  " +
       tried.join("\n  "),
   );
 }
