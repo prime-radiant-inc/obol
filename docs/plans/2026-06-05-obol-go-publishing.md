@@ -18,14 +18,15 @@
 
 Monorepo `bindings/go/obol/` after the rewrite:
 - `obol.go` — public API + JSON types (surface unchanged; cgo internals → purego calls).
-- `loader.go` — **new**: purego `openLibrary()` (OBOL_LIB → embedded extract → dev `target/`), `RegisterLibFunc` of the 5 symbols, `sync.Once`, C-string helpers.
+- `loader.go` — **new** (`//go:build darwin || linux`): purego `openLibrary()` (OBOL_LIB → embedded extract → dev `target/`), `RegisterLibFunc` of the 5 symbols, `sync.Once`, C-string helpers.
+- `loader_unsupported.go` — **new** (`//go:build !darwin && !linux`): off-target stubs (purego has no `Dlopen` on Windows) so the package compiles everywhere and fails at runtime.
 - `embed_stub.go` — **new**: dev `var embeddedLib []byte` (nil) + `const embeddedExt = ""`. Replaced by generated files in `obol-go`.
 - `obol_test.go` — existing tests, env-set via the new helper instead of `t.Setenv`.
 - `pricing_env_test.go` — **new**: libc-`setenv`-via-purego helper (test-only `_test.go`, so it never ships to `obol-go`).
 - `cmd/total/main.go`, `go.mod`, `README.md` — unchanged (except go.mod gains the purego require).
 
 Generated into `obol-go` by `scripts/assemble-obol-go.sh` (**new**):
-- root `obol.go`, `loader.go` (copied/flattened), `embed_<goos>_<goarch>.go` ×4 + `embed_unsupported.go`, `smoke_test.go`, `native/<plat>-<arch>/libobol_ffi.{dylib,so}` ×4, `go.mod`, `go.sum`, `LICENSE`, `NOTICE`, `README.md` (seeded).
+- root `obol.go`, `loader.go`, `loader_unsupported.go` (copied/flattened), `embed_<goos>_<goarch>.go` ×4 + `embed_unsupported.go`, `smoke_test.go`, `native/<plat>-<arch>/libobol_ffi.{dylib,so}` ×4, `go.mod`, `go.sum`, `LICENSE`, `NOTICE`, `README.md` (seeded).
 
 Workflow/CI:
 - `.github/workflows/release.yml` — **add** `publish-go` job.
@@ -68,9 +69,16 @@ var embeddedLib []byte
 const embeddedExt = ""
 ```
 
-- [ ] **Step 4: Create `loader.go`**
+- [ ] **Step 4: Create `loader.go`** (build-constrained to platforms where purego has `Dlopen`)
+
+`purego.Dlopen`/`RTLD_*` exist only on darwin/linux/bsd — NOT Windows. `loader.go` must carry a
+build tag or the module fails to **compile** on Windows (rather than failing cleanly at runtime).
+The `embed_unsupported.go` stub handles `embeddedLib`, but the loader symbols need their own
+off-target stub (next step). Start `loader.go` with the constraint:
 
 ```go
+//go:build darwin || linux
+
 package obol
 
 import (
@@ -258,6 +266,40 @@ func dialectBytes(d string) []byte {
 }
 ```
 
+- [ ] **Step 4b: Create `loader_unsupported.go`** (off-target stubs so non-darwin/linux still compiles)
+
+`obol.go` (unconstrained) calls `ensureLoaded`, `cstr`, `bytePtr`, `dialectBytes`, and the `c*` func
+vars — all defined in the constrained `loader.go`. On Windows etc. they'd be undefined. Provide
+stubs under the complementary build tag so the package compiles everywhere and fails *at runtime*
+with a clear message:
+
+```go
+//go:build !darwin && !linux
+
+package obol
+
+import "errors"
+
+// Off-target placeholders. On any platform without a purego Dlopen, the binding compiles but
+// every entry point fails fast (Version returns ""); set OBOL_LIB is not enough here — the
+// platform simply isn't built. darwin/linux use loader.go instead.
+var (
+	cVersion       func() uintptr
+	cEstimatePath  func(path *byte, dialect *byte, out *uintptr) int32
+	cEstimateBytes func(data *byte, n uintptr, dialect *byte, out *uintptr) int32
+	cRefresh       func(asOf *byte, out *uintptr) int32
+	cStringFree    func(p uintptr)
+)
+
+func ensureLoaded() error {
+	return errors.New("obol: libobol_ffi is not available on this platform (only macOS and Linux are built)")
+}
+
+func cstr(p uintptr) string        { return "" }
+func bytePtr(b []byte) *byte        { return nil }
+func dialectBytes(d string) []byte  { return nil }
+```
+
 - [ ] **Step 5: Rewrite `obol.go` — replace the cgo block + imports**
 
 Replace the package doc comment, the entire `/* #cgo … */ import "C"` block, and the import list at the top of `bindings/go/obol/obol.go` (lines 1-17) with:
@@ -359,15 +401,17 @@ Also change `decodeEstimate`'s signature from `C.int32_t` to `int32` (line 86: `
 Run: `cd bindings/go && CGO_ENABLED=0 go test ./...`
 Expected: PASS — `TestVersion`, `TestEstimatePath`, `TestMissingTablesIsError` (code 1), `TestUnknownDialectIsError` (code 7). (`t.Setenv` reaches the dylib on macOS; Task 2 makes it Linux-safe.)
 
-- [ ] **Step 8: Confirm cgo is truly gone**
+- [ ] **Step 8: Confirm cgo is truly gone, and the package compiles off-target**
 
-Run: `cd bindings/go && CGO_ENABLED=0 go build ./... && go vet ./...`
-Expected: clean build + vet, proving no `import "C"` remains.
+Run: `cd bindings/go && CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...`
+Expected: both succeed, proving no `import "C"` remains and the `loader_unsupported.go` stub keeps
+Windows compiling. (Do **not** add `go vet` here: `cstr` trips vet's `unsafeptr` check on the raw
+C-address→pointer conversion — an unavoidable, harmless advisory; CI runs neither vet on this leg.)
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add bindings/go/obol/obol.go bindings/go/obol/loader.go bindings/go/obol/embed_stub.go bindings/go/go.mod bindings/go/go.sum
+git add bindings/go/obol/obol.go bindings/go/obol/loader.go bindings/go/obol/loader_unsupported.go bindings/go/obol/embed_stub.go bindings/go/go.mod bindings/go/go.sum
 git commit -m "feat(go): rewrite binding from cgo to purego (PRI-2095)"
 ```
 
@@ -576,8 +620,10 @@ PUREGO_VERSION="v0.10.1"
   rm -rf native )
 
 # 2. Copy the embed-free source, flattened to the module root (package stays `obol`).
-cp "$SRC/obol.go"   "$DEST/obol.go"
-cp "$SRC/loader.go" "$DEST/loader.go"
+#    loader_unsupported.go ships too, so the module compiles (and fails cleanly) off darwin/linux.
+cp "$SRC/obol.go"               "$DEST/obol.go"
+cp "$SRC/loader.go"             "$DEST/loader.go"
+cp "$SRC/loader_unsupported.go" "$DEST/loader_unsupported.go"
 
 # 3. Native libs + generated per-platform embed files.
 #    The embed FILENAME uses canonical GOARCH (amd64), NOT the x64 dir naming — else the
