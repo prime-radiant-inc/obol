@@ -9,6 +9,7 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|e| ObolError::MalformedTranscript { line: 0, msg: e.to_string() })?;
     let mut out = Vec::new();
+    let mut current_model = String::new();
 
     for line in text.lines() {
         let line = line.trim();
@@ -19,8 +20,16 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
             Ok(v) => v,
             Err(_) => continue,
         };
+        let ty = v.get("type").and_then(Value::as_str);
+        // Track the running model so a turn_end without `message.model` can inherit it.
+        if ty == Some("model_change") {
+            if let Some(m) = v.get("modelId").and_then(Value::as_str) {
+                current_model = m.to_string();
+            }
+            continue;
+        }
         // Usage lives on turn_end; the streaming message_update deltas are ignored.
-        if v.get("type").and_then(Value::as_str) != Some("turn_end") {
+        if ty != Some("turn_end") {
             continue;
         }
         let msg = match v.get("message") {
@@ -28,7 +37,7 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
             None => continue,
         };
         let usage = match msg.get("usage") {
-            Some(u) if u.as_object().map_or(false, |o| !o.is_empty()) => u,
+            Some(u) if u.as_object().is_some_and(|o| !o.is_empty()) => u,
             _ => continue, // empty/foreign usage -> no billable record
         };
 
@@ -44,8 +53,15 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
         let provider_str = msg.get("provider").and_then(Value::as_str).unwrap_or("");
         let (namespace, provider) = route(provider_str);
 
+        let model = msg
+            .get("model")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| current_model.clone());
+
         out.push(MessageUsage {
-            model: msg.get("model").and_then(Value::as_str).unwrap_or("").to_string(),
+            model,
             provider,
             namespace,
             input_uncached: input,
@@ -78,8 +94,8 @@ mod tests {
     #[test]
     fn reads_turn_end_usage_and_routes_by_provider() {
         let u = parse(include_bytes!("../../tests/fixtures/pi-mini.jsonl")).unwrap();
-        // message_update ignored; empty-usage turn skipped -> 2 records
-        assert_eq!(u.len(), 2, "{u:?}");
+        // message_update ignored; empty-usage turn skipped -> 3 records
+        assert_eq!(u.len(), 3, "{u:?}");
 
         assert_eq!(u[0].namespace, "litellm");
         assert_eq!(u[0].provider, Provider::OpenAI);
@@ -90,8 +106,14 @@ mod tests {
 
         assert_eq!(u[1].namespace, "openrouter");
         assert_eq!(u[1].provider, Provider::OpenRouter);
-        assert_eq!(u[1].model, "tencent/hy3-preview");
+        assert_eq!(u[1].model, "tencent/hy3-preview"); // vendor-qualified key, verbatim
         assert_eq!(u[1].input_uncached, 6412);
         assert_eq!(u[1].cache_read, 5760);
+
+        // anthropic turn with no `message.model` inherits the prior model_change
+        assert_eq!(u[2].namespace, "litellm");
+        assert_eq!(u[2].provider, Provider::Anthropic);
+        assert_eq!(u[2].model, "claude-opus-4-5");
+        assert_eq!(u[2].input_uncached, 100);
     }
 }

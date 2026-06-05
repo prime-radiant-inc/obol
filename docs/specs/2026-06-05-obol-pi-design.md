@@ -90,7 +90,8 @@ display label — `cost_for` is provider-agnostic — so this is a non-breaking 
 
 `refresh_pricing_tables` writes both namespaces into the one dated snapshot + `current.json`
 (the `PriceStore` is already namespace-keyed, so this is additive — no schema change). The
-`RefreshReport` reports counts per namespace.
+`RefreshReport` reports the total model count across namespaces (a per-namespace breakdown
+is YAGNI pre-1.0 and trivially derivable; not worth widening the struct).
 
 ## Dialect detection + dispatch
 
