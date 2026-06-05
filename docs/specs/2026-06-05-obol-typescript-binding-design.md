@@ -49,7 +49,9 @@ const lib = dlopen(libPath, {
 ### Node (`koffi`, prebuilt binaries, no node-gyp)
 
 ```ts
-const koffi = require("koffi");
+import koffi from "koffi";   // NOT require() — the package is type:module; a bare require throws
+                             // "require is not defined in ES module scope". koffi's exports map
+                             // supports the default import in 2.16+ and 3.x.
 const lib = koffi.load(libPath);
 const obol_string_free   = lib.func("void obol_string_free(void* s)");
 const obol_estimate_path = lib.func("int obol_estimate_path(const char* path, const char* dialect, _Out_ void** out)");
@@ -106,8 +108,11 @@ export interface FfiBackend {
 }
 export async function loadBackend(): Promise<FfiBackend> {
   const isBun = typeof (globalThis as any).Bun !== "undefined";
-  const mod = isBun ? await import("./ffi-bun.js") : await import("./ffi-node.js");
-  return mod.createBackend(lateResolvedLibPath());
+  // NOTE: specifiers are `.ts`, not `.js`. We run sources directly (no build), and Node 26 does
+  // NOT rewrite `.js`→`.ts` — an `./ffi-node.js` import throws ERR_MODULE_NOT_FOUND when only
+  // `.ts` exists on disk. Bun tolerates either; Node requires the real `.ts` name.
+  const mod = isBun ? await import("./ffi-bun.ts") : await import("./ffi-node.ts");
+  return mod.createBackend(resolveLibPath());
 }
 ```
 
@@ -140,8 +145,17 @@ export function refresh(asOf: string): Promise<RefreshReport>;
 export type Dialect = "claude" | "codex" | "pi";
 ```
 
-(Async because the backend is `import()`ed lazily; the backend is cached after first load.) On
-nonzero status, parse the `{"error":{code,kind,message}}` envelope and `throw new ObolError(...)`.
+Async because the backend is `import()`ed lazily. Memoize the **promise** at module scope
+(`let backend: Promise<FfiBackend> | undefined`), so concurrent first calls all await the same
+import rather than double-loading; every call does `await (backend ??= loadBackend())`. Because
+the public API is async and awaits the memoized promise on every call, there is no
+"called-before-backend-resolved" hazard. On nonzero status, parse the
+`{"error":{code,kind,message}}` envelope and `throw new ObolError(...)`.
+
+Error-code note for the implementer: an explicit bad dialect string returns **code 7**
+(`InvalidArgument`, "unknown or invalid dialect string"), *not* code 2. Code 2 (`UnknownDialect`)
+is reserved for *auto-detect failed to identify any dialect*. The unknown-dialect test asserts 7
+— this is correct; do not "fix" it to 2.
 
 ### Types (`types.ts`) — snake_case, mirroring the wire 1:1
 
@@ -187,9 +201,12 @@ Build the dylib first: `cargo build -p obol-ffi`.
 ## Acceptance — equivalence gate extended to four languages
 
 Extend `scripts/validate_bindings.sh` to add a **`ts`** total via `bindings/typescript/total.ts`,
-run under **both Bun and Node**, normalized through the same one-parser value compare. The gate
-asserts `rust == python == go == ts_bun == ts_node` (all the same IEEE-754 `total_usd`). A
-failure in any consumer fails the gate.
+run under **both Bun and Node**. The existing gate pipes every consumer's total through one
+`norm()` = `python3 -c 'repr(float(...))'`, so `total.ts` need only `console.log` the `total_usd`
+in any form Python's `float()` round-trips (e.g. the default number-to-string) — it does *not*
+need byte-identical formatting; `norm` collapses representations to one canonical f64 repr. The
+gate then asserts `rust == python == go == ts_bun == ts_node` (the same normalized IEEE-754
+value). A failure in any consumer fails the gate.
 
 ## Linux verification
 
@@ -206,8 +223,16 @@ beyond `tsc --noEmit` typecheck — we run sources directly (Bun + Node 26 both 
 
 ## Open threads (small)
 
-- Whether `node --test` on a `.ts` file needs any flag on Node 26 (type-stripping is unflagged
-  since 23.6, but confirm on the pinned Node and document the exact command).
-- koffi version pin (`^2`) and whether its prebuilt binary covers linux-arm64 in the container
-  (it ships prebuilds broadly; confirm during Linux verify, else it builds from source with the
-  toolchain already present).
+- koffi prebuilt-binary coverage for **linux-arm64** in the `ubuntu:24.04` container — koffi ships
+  prebuilds broadly; if its target is missing it builds from source (the C toolchain is already
+  installed for the cgo path). Confirm during Linux verify.
+
+> Resolved during spec review (Calvin@a1ec3dd5, probed under node 26 / bun 1.3.11):
+> - Node runs `node --test test/obol.test.ts` on a `.ts` file **with no flag** (type-stripping is
+>   unflagged on Node 26); `bun test` runs the same `node:test`/`node:assert` file. One test file,
+>   both runtimes — confirmed.
+> - koffi pin: **2.16.2 and 3.0.2 both verified** working (load, `void**`, decode, free, default
+>   import). The plan picks one and pins it exactly in `package.json` for a reproducible gate.
+> - Both FFI dances (bun:ffi pointer-buffer; koffi `void**`+`decode`+free) verified verbatim →
+>   `total_usd 0.000995`, bad-dialect → code 7. The `void**`-not-`char**` call is real (char**
+>   auto-stringifies and leaks the pointer).
