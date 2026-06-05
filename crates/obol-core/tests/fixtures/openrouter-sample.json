@@ -1,0 +1,5 @@
+{"data":[
+  {"id":"tencent/hy3-preview","pricing":{"prompt":"0.000000066","completion":"0.00000026","input_cache_read":"0.000000029","input_cache_write":"0"}},
+  {"id":"anthropic/claude-opus-4.8","pricing":{"prompt":"0.000005","completion":"0.000025","input_cache_read":"0.0000005","input_cache_write":"0.00000625"}},
+  {"id":"weird/no-pricing"}
+]}

@@ -47,10 +47,12 @@ pub fn estimate_cost(source: Source, dialect: Option<Dialect>) -> Result<CostEst
 /// Fetch the LiteLLM sheet and write it as the active snapshot. `as_of` is the
 /// caller's date string (the library has no clock).
 pub fn refresh_pricing_tables(as_of: &str) -> Result<RefreshReport, ObolError> {
-    let store = pricing::refresh::fetch_litellm(as_of)?;
-    let models = store.namespaces.get("litellm").map_or(0, |m| m.len());
+    let mut store = pricing::refresh::fetch_litellm(as_of)?; // {litellm: …}
+    let openrouter = pricing::refresh::fetch_openrouter()?;
+    store.namespaces.insert("openrouter".to_string(), openrouter);
+    let models: usize = store.namespaces.values().map(|m| m.len()).sum();
     let dir = pricing::pricing_dir();
-    store.save(&dir.join(format!("litellm-{as_of}.json")))?;
+    store.save(&dir.join(format!("prices-{as_of}.json")))?;
     let current = pricing::current_path();
     store.save(&current)?;
     Ok(RefreshReport { models, as_of: as_of.to_string(), written_to: current })

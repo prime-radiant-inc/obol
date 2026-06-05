@@ -79,6 +79,58 @@ pub fn fetch_litellm(as_of: &str) -> Result<PriceStore, ObolError> {
     normalize_litellm(body.as_bytes(), as_of)
 }
 
+const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1/models";
+
+/// Build the `openrouter` namespace from the raw /api/v1/models bytes. Keys are
+/// OpenRouter ids (`<vendor>/<model>`); rates are per-token strings → per-million.
+/// No tier fields (OpenRouter doesn't expose them).
+pub fn normalize_openrouter(bytes: &[u8]) -> Result<HashMap<String, ModelPrice>, ObolError> {
+    let v: Value = serde_json::from_slice(bytes)?;
+    let mut out = HashMap::new();
+    let empty = vec![];
+    for m in v.get("data").and_then(Value::as_array).unwrap_or(&empty) {
+        let id = match m.get("id").and_then(Value::as_str) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        let p = match m.get("pricing") {
+            Some(p) => p,
+            None => continue,
+        };
+        let f = |k: &str| p.get(k).and_then(Value::as_str).and_then(|s| s.parse::<f64>().ok());
+        let (prompt, completion) = match (f("prompt"), f("completion")) {
+            (Some(a), Some(b)) => (a, b),
+            _ => continue,
+        };
+        out.insert(
+            id,
+            ModelPrice {
+                input: prompt * M,
+                output: completion * M,
+                cache_read: f("input_cache_read").unwrap_or(0.0) * M,
+                cache_write: f("input_cache_write").unwrap_or(0.0) * M,
+                cache_write_1h: None,
+                tier_boundary: None,
+                input_above: None,
+                output_above: None,
+                cache_read_above: None,
+                cache_write_above: None,
+            },
+        );
+    }
+    Ok(out)
+}
+
+/// Fetch the live OpenRouter model list.
+pub fn fetch_openrouter() -> Result<HashMap<String, ModelPrice>, ObolError> {
+    let body = ureq::get(OPENROUTER_URL)
+        .call()
+        .map_err(|e| ObolError::Network(e.to_string()))?
+        .into_string()
+        .map_err(|e| ObolError::Network(e.to_string()))?;
+    normalize_openrouter(body.as_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +168,18 @@ mod tests {
         let g = s.lookup("litellm", "gpt-5.5").unwrap();
         assert_eq!(g.tier_boundary, Some(272_000));
         assert!((g.input_above.unwrap() - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn normalizes_openrouter_per_million_no_tiers() {
+        let t = normalize_openrouter(include_bytes!("../../tests/fixtures/openrouter-sample.json")).unwrap();
+        let opus = t.get("anthropic/claude-opus-4.8").unwrap();
+        assert!((opus.input - 5.0).abs() < 1e-9);
+        assert!((opus.output - 25.0).abs() < 1e-9);
+        assert!((opus.cache_read - 0.5).abs() < 1e-9);
+        assert_eq!(opus.tier_boundary, None);
+        let hy3 = t.get("tencent/hy3-preview").unwrap();
+        assert!((hy3.input - 0.066).abs() < 1e-6);
+        assert!(t.get("weird/no-pricing").is_none());
     }
 }
