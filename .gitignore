@@ -4,3 +4,6 @@
 # Go binding build artifacts (compiled by `go build`)
 /bindings/go/total
 /bindings/go/cmd/total/total
+
+# TypeScript binding installed deps (koffi; restored by bun/npm install)
+/bindings/typescript/node_modules

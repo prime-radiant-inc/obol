@@ -1,0 +1,11 @@
+{
+  "name": "obol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent-transcript cost estimation — TypeScript binding over the obol C ABI (Bun + Node).",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "koffi": "2.16.2"
+  }
+}
