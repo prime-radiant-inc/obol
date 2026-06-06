@@ -84,7 +84,20 @@ their own **`crates-v*`** tag namespace via `.github/workflows/crates-release.ym
 the two binding version tests (`bindings/python/tests/test_obol.py`,
 `bindings/typescript/test/obol.test.ts`), commit, then push `crates-vX.Y.Z`.
 
-## Other registries
+## PyPI — `primeradianthq-obol` (import `obol`)
 
-PyPI publishing is not yet wired — a separate follow-on ticket. The GitHub Release dylibs (step 5
-above) are the canonical artifacts it will reuse.
+Decoupled `pypi-v*` tag namespace (version from the tag, like crates). `pypi-vX.Y.Z` →
+`.github/workflows/pypi-release.yml` builds four wheels — macOS arm64/x64 on the runners, Linux
+x64/arm64 in `manylinux_2_28` containers (`scripts/build-pypi-wheel-linux.sh` + `auditwheel repair`)
+— each bundling that platform's prebuilt `libobol_ffi`, then publishes via **tokenless OIDC**
+(`pypa/gh-action-pypi-publish`).
+
+- **Trusted Publishing (pending publisher, no token ever).** Configured once on PyPI: project
+  `primeradianthq-obol`, owner `prime-radiant-inc`, repo `obol`, workflow `pypi-release.yml`, **no
+  environment** (the workflow must stay environment-less to match). PyPI's pending-publisher flow
+  creates the project on the first publish — no bootstrap, unlike crates/npm.
+- **Wheels only** (no sdist — a source build needs Rust + the cdylib). `import obol` stays; the
+  distribution name `primeradianthq-obol` differs because bare `obol` is a taken PyPI name.
+- The wheel is abi-agnostic (`py3-none-<plat>`): a `setup.py` forces an impure, platform-tagged
+  wheel (`OBOL_WHEEL_PLAT` per macOS arch; `auditwheel` sets the manylinux tag on Linux).
+- To release: push `pypi-vX.Y.Z` (the version is stamped from the tag into `pyproject.toml`).
