@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: obol
+  description: Read an AI-agent transcript and estimate what it cost — a Rust core with C-ABI bindings for Python, Go, and TypeScript.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    prime-radiant.com/repo-map-rev: "426ad8ca8f386737a621d424b84e8d5678ce21aa"
+  tags: [rust, ffi, cost-estimation, llm]
+spec:
+  type: library
+  lifecycle: production
+  owner: user:mhat
+  system: obol

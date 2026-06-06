@@ -1,0 +1,16 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: obol-go
+  description: Generated Go binding for obol; loads the native library at runtime via purego with no cgo.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    prime-radiant.com/repo-map-rev: "07a98a2256e7470afb2acd585dc61a70561e8111"
+  tags: [go, purego, cost-estimation]
+spec:
+  type: library
+  lifecycle: experimental
+  owner: user:mhat
+  system: obol
+  dependsOn:
+    - component:obol
