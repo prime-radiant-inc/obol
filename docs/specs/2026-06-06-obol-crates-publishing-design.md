@@ -114,8 +114,8 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          mise exec rust@1.96.0 -- cargo publish -p obol-core
-          mise exec rust@1.96.0 -- cargo publish -p obol-cli
+          mise exec rust@1.96.0 -- cargo publish --locked -p obol-core
+          mise exec rust@1.96.0 -- cargo publish --locked -p obol-cli
 ```
 
 **Phase 2 — OIDC (after trusted publishing is configured), a small committed edit:** drop the
@@ -128,8 +128,8 @@ the official action before publishing:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
-          mise exec rust@1.96.0 -- cargo publish -p obol-core
-          mise exec rust@1.96.0 -- cargo publish -p obol-cli
+          mise exec rust@1.96.0 -- cargo publish --locked -p obol-core
+          mise exec rust@1.96.0 -- cargo publish --locked -p obol-cli
 ```
 (The exact action ref `rust-lang/crates-io-auth-action@v1` is verified during the OIDC step of the
 build; it exchanges the GitHub OIDC token for a temporary crates.io token scoped to the trusted
@@ -147,10 +147,17 @@ publisher.)
    Settings → Trusted Publishing → GitHub: repo `prime-radiant-inc/obol`, workflow
    `crates-release.yml`). Remove `CARGO_REGISTRY_TOKEN`.
 5. **Switch to OIDC** — land the Phase-2 workflow edit.
-6. **Align at 0.1.1** — bump `[workspace.package] version` **and** the `[workspace.dependencies]
-   obol-core` version to `0.1.1` (together), commit, push `crates-v0.1.1` → publishes `0.1.1` via
-   OIDC. Now npm/Go/crates and `Version()` (which reads the core crate version via the FFI) all read
-   `0.1.1`.
+6. **Align at 0.1.1** — bump to `0.1.1` and push `crates-v0.1.1` → publishes `0.1.1` via OIDC. Now
+   npm/Go/crates and `Version()` (which reads the core crate version via the FFI) all read `0.1.1`.
+   The bump moves `obol_version()` to `0.1.1`, so the edit set is **four files, not two** (the
+   binding tests assert the literal and go red otherwise):
+   - `Cargo.toml` `[workspace.package] version = "0.1.1"`
+   - `Cargo.toml` `[workspace.dependencies] obol-core` `version = "0.1.1"` (must equal the above)
+   - `bindings/python/tests/test_obol.py` — `assert obol.version() == "0.1.1"`
+   - `bindings/typescript/test/obol.test.ts` — `assert.equal(await obol.version(), "0.1.1")`
+   The Rust FFI test (`env!("CARGO_PKG_VERSION")`) and the CLI `--version` (clap) self-track — no
+   change. Prose `0.1.0` examples (`docs/RELEASING.md`, the Python/Go READMEs) are a not-CI-gated
+   nicety to sweep at the same time.
 
 ## Versioning & alignment
 
@@ -163,10 +170,15 @@ publish-order test catch this.
 
 ## Testing & verification
 
-- **Local dry-run** (after prep, before any tag): `cargo publish -p obol-core --dry-run` and
-  `cargo publish -p obol-cli --dry-run` both succeed (the obol-cli dep-version error is gone). Note:
-  `--dry-run` packages + compiles but does **not** hit registry-side validation (description, name
-  collision) — those are exercised by the real bootstrap publish.
+- **Local checks (after prep, before any tag):** `cargo publish -p obol-core --dry-run` succeeds,
+  and `cargo package --list -p obol-cli` succeeds (lists files without resolving registry deps).
+  **`cargo publish -p obol-cli --dry-run` will NOT succeed pre-bootstrap** — with `path` stripped it
+  resolves `obol-core = "0.1.0"` from crates.io, which isn't published yet (`no matching package
+  named obol-core found`). That's *correct* (it proves the path→version swap worked); obol-cli's
+  real validation happens **during** the bootstrap, where the workflow publishes obol-core first and
+  cargo ≥1.66 waits for the index before publishing obol-cli. So **do not gate prep on an obol-cli
+  dry-run.** Note: `--dry-run` also doesn't hit registry-side validation (description, name
+  collision) — exercised by the real bootstrap publish.
 - **Packaged contents:** `cargo package --list -p obol-core` / `-p obol-cli` to confirm the README
   and `Cargo.toml` (with stripped path dep) are in the `.crate`, and no stray files.
 - **Post-publish (bootstrap):** after `crates-v0.1.0`, in a scratch dir `cargo new t && cd t &&
@@ -183,8 +195,11 @@ publish-order test catch this.
 
 ## Open threads
 
-None blocking. One to confirm in review: the exact crates.io OIDC action ref + its token output name
-(`rust-lang/crates-io-auth-action@v1`, output `token`) — verified live during the Phase-2 edit.
+None. The crates.io OIDC action ref + output (`rust-lang/crates-io-auth-action@v1`, output `token`,
+`id-token: write`) is confirmed current (Mishima review). crates.io Trusted Publishing requires the
+crate to **already exist** — no PyPI-style pending publisher — so the token bootstrap is mandatory,
+not avoidable. `--locked` is on the publish commands (a committed `Cargo.lock` makes CI publishes
+reproducible).
 
 ---
 
