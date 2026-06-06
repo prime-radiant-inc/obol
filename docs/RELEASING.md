@@ -62,7 +62,29 @@ files + `go.mod`/`go.sum`), smoke-tests it, then commits and tags `obol-go`.
   embeds the platform dylib and extracts+`dlopen`s it at first use. `version()` returns the Rust
   core version, decoupled from the module tag (same as npm).
 
+## crates.io — `obol-core` + `obol-cli`
+
+Decoupled from the npm/Go `v*` tags: crates take their version from `Cargo.toml`, so they publish on
+their own **`crates-v*`** tag namespace via `.github/workflows/crates-release.yml`. A guard asserts
+`crates-vX.Y.Z` matches the workspace version; the workflow publishes `obol-core` then `obol-cli`
+(cargo ≥1.66 waits for the index between them). `obol-ffi` is not published.
+
+**Bootstrap (one-time, token).** crates.io Trusted Publishing requires the crate to exist first.
+1. Create a crates.io API token (scopes `publish-new` + `publish-update`); add it as the repo secret
+   `CARGO_REGISTRY_TOKEN`.
+2. Push `crates-v0.1.0` → publishes `obol-core` + `obol-cli` at `0.1.0` (creates the crates).
+3. On crates.io, configure **Trusted Publishing** on each crate (Settings → Trusted Publishing →
+   GitHub Actions, repo `prime-radiant-inc/obol`, workflow `crates-release.yml`). Remove
+   `CARGO_REGISTRY_TOKEN`.
+4. Switch the workflow to OIDC (below) — every release after is tokenless.
+
+**Steady state (OIDC).** The workflow mints a short-lived token via
+`rust-lang/crates-io-auth-action@v1` (needs `permissions: id-token: write`). To release: bump
+`[workspace.package] version` **and** `[workspace.dependencies] obol-core` version together, update
+the two binding version tests (`bindings/python/tests/test_obol.py`,
+`bindings/typescript/test/obol.test.ts`), commit, then push `crates-vX.Y.Z`.
+
 ## Other registries
 
-PyPI and crates.io publishing are not yet wired — separate follow-on tickets. The GitHub
-Release dylibs (step 5 above) are the canonical artifacts those will reuse.
+PyPI publishing is not yet wired — a separate follow-on ticket. The GitHub Release dylibs (step 5
+above) are the canonical artifacts it will reuse.
