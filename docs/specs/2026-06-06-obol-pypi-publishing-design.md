@@ -60,6 +60,11 @@ packages = ["obol"]
 obol = ["libobol_ffi.dylib", "libobol_ffi.so"]
 ```
 
+`readme = "README.md"` renders on the PyPI page, but `bindings/python/README.md` currently leads with
+in-tree dev steps (`mise exec … cargo build -p obol-ffi`) that confuse a `pip install` audience (the
+lib is bundled — they never build it). Add a short "**PyPI users:** just `pip install
+primeradianthq-obol`; the native library is bundled" lead and keep the dev/build details below it.
+
 `setup.py` forces an impure, platform-but-abi-agnostic wheel and keeps the package files at the wheel
 **root** (not under `.data/purelib`, which `root_is_pure=False` alone would do — Appendix A). The
 clean way is a `Distribution` that reports it has ext modules, plus a `get_tag` override; the
@@ -70,10 +75,10 @@ probe's naive tag was `universal2` for an arm64-only dylib — wrong):
 import os
 from setuptools import setup
 from setuptools.dist import Distribution
-try:
-    from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
-except ImportError:
+try:  # modern path first (wheel ≥0.46 deprecates its own bdist_wheel shim)
     from setuptools.command.bdist_wheel import bdist_wheel as _bdist_wheel
+except ImportError:
+    from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
 class BinaryDistribution(Distribution):
     def has_ext_modules(self):   # → impure wheel, files stay at root
@@ -121,8 +126,9 @@ The manylinux images already ship Python + `pip` + `auditwheel`; macOS legs `pip
 ## Versioning
 
 The wheel version is stamped from the tag: `pypi-vX.Y.Z` → `X.Y.Z`. Each leg rewrites
-`pyproject.toml`'s `version = "0.0.0"` to the tag version before building (a one-line `sed`/python
-edit), so all four wheels share the version. Decoupled `pypi-v*` namespace (like crates' `crates-v*`)
+`pyproject.toml`'s version before building, **anchored to the line** so it can't hit a stray `0.0.0`
+elsewhere: `sed -i 's/^version = "0.0.0"/version = "X.Y.Z"/' pyproject.toml`. All four legs check out
+the same tag and stamp the same version independently (no race — the version lives in the tag). Decoupled `pypi-v*` namespace (like crates' `crates-v*`)
 — the `v*` tags stay npm/Go. First release is **`pypi-v0.1.1`** to align all channels. (`version()`
 still returns the Rust core version, `0.1.1`, from the bundled dylib — consistent.)
 
@@ -140,8 +146,8 @@ means the very first publish creates the project tokenlessly — no bootstrap.
 - **Probe (done, Appendix A):** a platform wheel bundling the dylib installs `--no-index` into a
   clean venv and `obol.version()` → `0.1.1`, no `OBOL_LIB`.
 - **Per-leg smoke (in the workflow, before publish):** after building each wheel, `pip install` it
-  into a fresh venv and run `python -c "import obol; assert obol.version()"` — the wheel must load
-  its bundled lib. (On the Linux legs this runs in the manylinux container, proving glibc-2.28
+  into a fresh venv and run `python -c "import obol; assert obol.version() == '<stamped>'"` —
+  asserting the **exact** stamped version (truthiness alone would miss a stale/wrong bundled dylib). (On the Linux legs this runs in the manylinux container, proving glibc-2.28
   compatibility.)
 - **`twine check`** gates metadata/readme before upload.
 - **manylinux validation:** `auditwheel repair` *is* the validation — it refuses to tag a wheel
@@ -163,12 +169,15 @@ means the very first publish creates the project tokenlessly — no bootstrap.
 
 ## Open threads
 
-- Exact `auditwheel repair` invocation + that it cleanly tags our **non-extension** `.so` (it
-  analyzes all `.so` in the wheel, so it should — confirmed conceptually, verified in the plan's
-  manylinux build step).
-- Whether `MACOSX_DEPLOYMENT_TARGET` + the forced `macosx_<tgt>_arm64` tag fully satisfy delocate-free
-  shipping (our dylib is self-contained — no external dylibs to bundle — so `delocate` is likely
-  unnecessary; the plan confirms with `delocate-listdeps`).
+None — both prior threads resolved by the Brunelleschi review (run against real artifacts):
+- **`auditwheel` on our non-extension `.so`: works.** In `manylinux_2_28_x86_64`, `auditwheel repair`
+  analyzed the `PyInit_`-less data `.so`, retagged `linux_x86_64` → `manylinux_2_28_x86_64`, and
+  **kept the lib at `obol/libobol_ffi.so`** (no ABI-hash rename — that only hits vendored *dependency*
+  libs, of which we have none), so the loader still resolves. Installed + imported clean. No fallback
+  needed (`wheel tags` would be the backstop, unused).
+- **delocate unnecessary.** `otool -L` shows only `libSystem` + `libiconv` (base macOS); the dylib is
+  self-contained. The cdylib's max glibc symbol is exactly `GLIBC_2.28` and it links rustls (not
+  OpenSSL), so `manylinux_2_28` is correct and tight.
 
 ---
 
