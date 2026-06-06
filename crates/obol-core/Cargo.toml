@@ -3,6 +3,12 @@ name = "obol-core"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Read AI-agent transcripts (Claude Code, Codex, Pi) and estimate their USD cost."
+readme = "README.md"
+keywords = ["llm", "cost", "tokens", "ai", "transcript"]
+categories = ["parsing", "development-tools"]
 
 [dependencies]
 serde.workspace = true

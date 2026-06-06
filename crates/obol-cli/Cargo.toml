@@ -3,13 +3,19 @@ name = "obol-cli"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "CLI to estimate the USD cost of an AI-agent transcript (Claude Code, Codex, Pi)."
+readme = "README.md"
+keywords = ["llm", "cost", "tokens", "cli", "transcript"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "obol"
 path = "src/main.rs"
 
 [dependencies]
-obol-core = { path = "../obol-core" }
+obol-core.workspace = true
 clap.workspace = true
 serde_json.workspace = true
 
@@ -17,4 +23,4 @@ serde_json.workspace = true
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
-obol-core = { path = "../obol-core" }
+obol-core.workspace = true
