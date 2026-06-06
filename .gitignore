@@ -11,3 +11,10 @@
 # TypeScript binding build outputs (dist built by tsup; native/ assembled at release time)
 /bindings/typescript/dist
 /bindings/typescript/native
+
+# Python binding build artifacts (wheels; dylib copied beside the package at build time)
+/bindings/python/build
+/bindings/python/dist
+/bindings/python/*.egg-info
+/bindings/python/obol/libobol_ffi.*
+

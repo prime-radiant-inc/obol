@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "primeradianthq-obol"
+version = "0.0.0"
+description = "Estimate the USD cost of an AI-agent transcript (Claude Code, Codex, Pi)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Prime Radiant, Inc." }]
+keywords = ["llm", "cost", "tokens", "transcript", "ai-agents"]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+  "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/prime-radiant-inc/obol"
+Repository = "https://github.com/prime-radiant-inc/obol"
+
+[tool.setuptools]
+packages = ["obol"]
+
+[tool.setuptools.package-data]
+obol = ["libobol_ffi.dylib", "libobol_ffi.so"]

@@ -1,5 +1,9 @@
 # obol — Python binding (ctypes)
 
+> **Installing from PyPI:** `pip install primeradianthq-obol`, then `import obol`. The native
+> library is bundled in the wheel — no Rust toolchain, no `cargo build`, no `OBOL_LIB`. The
+> sections below are for in-repo development.
+
 A thin, pure-Python binding over obol's C ABI (`obol-ffi`). No build step: it loads the
 prebuilt shared library with `ctypes` and re-types the JSON the Rust core returns. The Rust
 core stays the single source of truth for all accounting; this package only marshals C
