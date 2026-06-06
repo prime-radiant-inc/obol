@@ -1,0 +1,27 @@
+name: Crates Release
+
+on:
+  push:
+    tags: ["crates-v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+      - name: Guard — tag must match the Cargo version
+        run: |
+          want="${GITHUB_REF_NAME#crates-v}"
+          got=$(mise exec rust@1.96.0 -- cargo metadata --no-deps --format-version 1 \
+                | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"]=="obol-core"))')
+          if [ "$want" != "$got" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo version $got"; exit 1
+          fi
+          echo "publishing version $got"
+      - name: Publish obol-core then obol-cli
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          mise exec rust@1.96.0 -- cargo publish --locked -p obol-core
+          mise exec rust@1.96.0 -- cargo publish --locked -p obol-cli
