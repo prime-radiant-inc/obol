@@ -40,7 +40,7 @@ rejected — point `OBOL_LIB` at a signed copy in that case.
 ```go
 import "github.com/prime-radiant-inc/obol-go" // or the in-repo package during development
 
-obol.Version() // "0.1.0" (the Rust core version)
+obol.Version() // "0.1.1" (the Rust core version)
 
 est, err := obol.EstimatePath("transcript.jsonl", "claude") // "" dialect auto-detects
 // est.TotalUSD, est.PricingAsOf, est.PerModel[i].{Model,Provider,SubtotalUSD}

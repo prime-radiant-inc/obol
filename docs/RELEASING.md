@@ -41,7 +41,7 @@ publish from a maintainer's machine. Every release after is tokenless OIDC via t
   Provenance is generated on the CI/OIDC releases (public repo + `id-token: write`); the one-time
   manual bootstrap publish has no provenance (no CI), which is why its tarball drops
   `publishConfig.provenance`.
-- `version()` (the binding API) returns the **Rust core** version (`obol_version()`, e.g. `0.1.0`),
+- `version()` (the binding API) returns the **Rust core** version (`obol_version()`, e.g. `0.1.1`),
   which is intentionally decoupled from the npm package version stamped from the tag.
 
 ## Go — `github.com/prime-radiant-inc/obol-go` (the Go binding)

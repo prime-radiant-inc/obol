@@ -28,7 +28,7 @@ If the library lives somewhere else, set `OBOL_LIB=/abs/path/to/libobol_ffi.dyli
 ```python
 import obol
 
-print(obol.version())  # "0.1.0"
+print(obol.version())  # "0.1.1"
 
 est = obol.estimate_path("transcript.jsonl", dialect="claude")  # dialect=None auto-detects
 print(est.total_usd, est.pricing_as_of)
