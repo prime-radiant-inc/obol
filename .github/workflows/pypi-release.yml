@@ -1,0 +1,80 @@
+name: PyPI Release
+
+on:
+  push:
+    tags: ["pypi-v*"]
+
+jobs:
+  wheels-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, plat: macosx_11_0_arm64, target: "11.0" }
+          - { os: macos-15-intel, plat: macosx_10_12_x86_64, target: "10.12" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+      - name: Build wheel
+        env:
+          OBOL_WHEEL_PLAT: ${{ matrix.plat }}
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#pypi-v}"
+          mise exec rust@1.96.0 -- cargo build --release -p obol-ffi
+          strip -x target/release/libobol_ffi.dylib
+          cp target/release/libobol_ffi.dylib bindings/python/obol/
+          sed -i '' "s/^version = \"0.0.0\"/version = \"$VERSION\"/" bindings/python/pyproject.toml
+          cd bindings/python
+          python3 -m venv /tmp/bw && /tmp/bw/bin/pip install --quiet build
+          /tmp/bw/bin/python -m build --wheel
+          python3 -m venv /tmp/iw && /tmp/iw/bin/pip install dist/*.whl
+          /tmp/iw/bin/python -c "import obol; v=obol.version(); assert v=='$VERSION', v"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.plat }}
+          path: bindings/python/dist/*.whl
+          if-no-files-found: error
+
+  wheels-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, arch: aarch64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build manylinux wheel
+        run: |
+          VERSION="${GITHUB_REF_NAME#pypi-v}"
+          docker run --rm -v "$PWD:/io" -w /io \
+            "quay.io/pypa/manylinux_2_28_${{ matrix.arch }}" \
+            bash scripts/build-pypi-wheel-linux.sh "$VERSION" "${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-manylinux-${{ matrix.arch }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+  publish:
+    needs: [wheels-macos, wheels-linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write # OIDC for PyPI Trusted Publishing (pending publisher)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: wheel-*
+          merge-multiple: true
+      - name: List + check
+        run: |
+          ls -l dist
+          pipx run twine check dist/*.whl
+      # No token, no repository-url (defaults to PyPI), no environment — matches the pending
+      # publisher (project primeradianthq-obol, repo prime-radiant-inc/obol, workflow
+      # pypi-release.yml, no environment).
+      - uses: pypa/gh-action-pypi-publish@release/v1

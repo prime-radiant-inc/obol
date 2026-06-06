@@ -17,4 +17,7 @@
 /bindings/python/dist
 /bindings/python/*.egg-info
 /bindings/python/obol/libobol_ffi.*
+/wheelhouse
+__pycache__/
+*.pyc
 
