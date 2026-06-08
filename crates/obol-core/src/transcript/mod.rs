@@ -1,5 +1,6 @@
 pub mod claude;
 pub mod codex;
+pub mod copilot;
 pub mod gemini;
 pub mod opencode;
 pub mod pi;
@@ -12,6 +13,7 @@ use serde_json::Value;
 pub enum Dialect {
     Claude,
     Codex,
+    Copilot,
     Gemini,
     Opencode,
     Pi,
@@ -33,6 +35,12 @@ pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
         };
         if v.get("payload").is_some() {
             return Ok(Dialect::Codex);
+        }
+        if matches!(
+            v.get("type").and_then(Value::as_str),
+            Some("session.shutdown") | Some("assistant.message") | Some("session.start")
+        ) {
+            return Ok(Dialect::Copilot);
         }
         if v.get("type").and_then(Value::as_str) == Some("session") {
             return Ok(Dialect::Pi);
@@ -61,6 +69,7 @@ pub fn parse(bytes: &[u8], dialect: Dialect) -> Result<Vec<MessageUsage>, ObolEr
     match dialect {
         Dialect::Claude => Ok(claude::parse(bytes)?.usages),
         Dialect::Codex => codex::parse(bytes),
+        Dialect::Copilot => copilot::parse(bytes),
         Dialect::Gemini => gemini::parse(bytes),
         Dialect::Opencode => opencode::parse(bytes),
         Dialect::Pi => pi::parse(bytes),
