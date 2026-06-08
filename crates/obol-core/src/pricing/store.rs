@@ -135,4 +135,24 @@ mod tests {
             "embedded snapshot should price a known model"
         );
     }
+
+    #[test]
+    fn embedded_snapshot_bundles_litellm_and_openrouter() {
+        let s = embedded().expect("embedded snapshot parses");
+        assert!(
+            s.namespaces.contains_key("litellm"),
+            "embedded snapshot must carry the litellm namespace"
+        );
+        let or = s
+            .namespaces
+            .get("openrouter")
+            .expect("embedded snapshot must carry the openrouter namespace");
+        assert!(!or.is_empty(), "openrouter namespace should be non-empty");
+        // OpenRouter keys are `<vendor>/<model>` — a run billed through OpenRouter
+        // prices from this namespace out of the box.
+        assert!(
+            or.keys().any(|k| k.contains('/')),
+            "openrouter keys are vendor/model form"
+        );
+    }
 }
