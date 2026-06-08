@@ -92,6 +92,8 @@ mod tests {
         // fallback to the step-finish part; reasoning folds into output
         assert_eq!(u[1].input_uncached, 100);
         assert_eq!(u[1].cache_read, 50);
+        assert_eq!(u[1].cache_write_5m, 7); // proves the nested /cache/write read
         assert_eq!(u[1].output, 7); // 5 + 2 reasoning
+        assert_eq!(u[1].request_input_tokens, 157); // 100 + 50 + 7
     }
 }
