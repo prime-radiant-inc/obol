@@ -30,3 +30,27 @@ fn estimate_json_on_claude_fixture() {
         .success()
         .stdout(predicates::str::contains("\"total_usd\""));
 }
+
+#[test]
+fn estimate_reports_bundled_pricing_source() {
+    let tmp = tempfile::tempdir().unwrap();
+    let claude = include_str!("../../obol-core/tests/fixtures/claude-mini.jsonl");
+    let transcript = tmp.path().join("session.jsonl");
+    fs::write(&transcript, claude).unwrap();
+
+    // No OBOL_PRICING_DIR -> the embedded snapshot prices it; source must be "bundled".
+    Command::cargo_bin("obol")
+        .unwrap()
+        .env_remove("OBOL_PRICING_DIR")
+        .args([
+            "estimate",
+            transcript.to_str().unwrap(),
+            "--dialect",
+            "claude",
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("pricing_source"))
+        .stdout(predicates::str::contains("bundled"));
+}
