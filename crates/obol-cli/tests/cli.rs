@@ -38,10 +38,13 @@ fn estimate_reports_bundled_pricing_source() {
     let transcript = tmp.path().join("session.jsonl");
     fs::write(&transcript, claude).unwrap();
 
-    // No OBOL_PRICING_DIR -> the embedded snapshot prices it; source must be "bundled".
+    // No override + an empty XDG home -> no on-disk snapshot, so the embedded one
+    // prices it and the source must be "bundled". Pointing XDG at the (snapshot-free)
+    // temp dir keeps this hermetic regardless of the dev's real ~/.local/share/obol.
     Command::cargo_bin("obol")
         .unwrap()
         .env_remove("OBOL_PRICING_DIR")
+        .env("XDG_DATA_HOME", tmp.path())
         .args([
             "estimate",
             transcript.to_str().unwrap(),
