@@ -1,8 +1,10 @@
 name: Crates Release
 
+# Unified release: a single `vX.Y.Z` tag drives all four channels (npm, Go, crates.io,
+# PyPI). crates.io takes its version from Cargo.toml, so a guard asserts the tag matches.
 on:
   push:
-    tags: ["crates-v*"]
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -14,9 +16,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v4
-      - name: Guard — tag must match the Cargo version
+      - name: Skip crates on prerelease tags
+        id: pre
+        # Cargo.toml carries the release version (e.g. 0.2.0), not the prerelease (0.2.0-rc.1),
+        # so a `-` tag would fail the version guard. crates.io isn't part of the prerelease
+        # (npm `next` / PyPI rc) flow — skip it cleanly instead of failing the run.
         run: |
-          want="${GITHUB_REF_NAME#crates-v}"
+          case "${GITHUB_REF_NAME#v}" in
+            *-*) echo "prerelease ${GITHUB_REF_NAME} — skipping crates.io"; echo "skip=true" >> "$GITHUB_OUTPUT";;
+            *)   echo "skip=false" >> "$GITHUB_OUTPUT";;
+          esac
+      - name: Guard — tag must match the Cargo version
+        if: steps.pre.outputs.skip != 'true'
+        run: |
+          want="${GITHUB_REF_NAME#v}"
           got=$(mise exec rust@1.96.0 -- cargo metadata --no-deps --format-version 1 \
                 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"]=="obol-core"))')
           if [ "$want" != "$got" ]; then
@@ -24,11 +37,26 @@ jobs:
           fi
           echo "publishing version $got"
       - name: Mint a short-lived crates.io token via OIDC (Trusted Publishing)
+        if: steps.pre.outputs.skip != 'true'
         uses: rust-lang/crates-io-auth-action@v1
         id: auth
-      - name: Publish obol-core then obol-cli
+      - name: Publish obol-core then obol-cli (idempotent)
+        if: steps.pre.outputs.skip != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        # crates versions are immutable, so a re-fired tag must SKIP an already-published
+        # version, not fail. Pre-check the registry per crate; publish only what's missing.
+        # cargo (>=1.66) waits for the index between core and cli when both are new.
         run: |
-          mise exec rust@1.96.0 -- cargo publish -p obol-core
-          mise exec rust@1.96.0 -- cargo publish -p obol-cli
+          VERSION="${GITHUB_REF_NAME#v}"
+          publish() {
+            crate="$1"
+            if curl -sf -H "User-Agent: obol-release (github actions; matt@primeradiant.com)" \
+                 "https://crates.io/api/v1/crates/$crate/$VERSION" >/dev/null 2>&1; then
+              echo "$crate@$VERSION already on crates.io — skipping"
+            else
+              mise exec rust@1.96.0 -- cargo publish -p "$crate"
+            fi
+          }
+          publish obol-core
+          publish obol-cli

@@ -80,7 +80,14 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           DIST_TAG="latest"; case "$VERSION" in *-*) DIST_TAG="next";; esac
           rm -f "$HOME/.npmrc"
-          npm publish --tag "$DIST_TAG"
+          # Idempotent: a re-fired tag must skip an already-published version (npm rejects
+          # republishing), not fail the run. Guard on non-empty output (npm view's exit code
+          # for a missing exact version varies across npm builds; empty output is reliable).
+          if [ -n "$(npm view "@primeradianthq/obol@$VERSION" version 2>/dev/null)" ]; then
+            echo "@primeradianthq/obol@$VERSION already published — skipping"
+          else
+            npm publish --tag "$DIST_TAG"
+          fi
       - name: Stage release assets (arch-qualified names — basenames collide otherwise)
         run: |
           mkdir -p /tmp/assets
@@ -112,18 +119,27 @@ jobs:
           repository: prime-radiant-inc/obol-go
           token: ${{ secrets.OBOL_GO_TOKEN }} # fine-grained PAT, Contents:write on obol-go
           path: obol-go
-      - name: Refuse if tag already published (proxy.golang.org is immutable)
+      - name: Skip if tag already on obol-go (proxy.golang.org is immutable)
+        id: gocheck
         working-directory: obol-go
+        # Idempotent re-fire: if the tag is already published, skip the Go publish instead of
+        # failing the run (a unified `v*` tag may be re-pushed to fix another channel).
         run: |
           if git ls-remote --exit-code --tags origin "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            echo "::error::${GITHUB_REF_NAME} already tagged on obol-go — bump the version."; exit 1
+            echo "${GITHUB_REF_NAME} already on obol-go — skipping Go publish"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Assemble module
+        if: steps.gocheck.outputs.skip != 'true'
         run: scripts/assemble-obol-go.sh "$GITHUB_WORKSPACE/obol-go" /tmp/dylibs "${GITHUB_REF_NAME#v}"
       - name: Smoke test (embed→extract→Dlopen, no OBOL_LIB)
+        if: steps.gocheck.outputs.skip != 'true'
         working-directory: obol-go
         run: CGO_ENABLED=0 go test ./...
       - name: Commit, tag, push
+        if: steps.gocheck.outputs.skip != 'true'
         working-directory: obol-go
         run: |
           git config user.name  "obol-release"
