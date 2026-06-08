@@ -27,7 +27,7 @@ export interface RefreshReport {
   as_of: string;
   written_to: string;
 }
-export type Dialect = "claude" | "codex" | "pi";
+export type Dialect = "claude" | "codex" | "pi" | "gemini" | "opencode" | "copilot" | "kimi";
 
 export class ObolError extends Error {
   code: number;

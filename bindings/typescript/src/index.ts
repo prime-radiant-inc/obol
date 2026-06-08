@@ -27,11 +27,8 @@ function unwrap<T>(r: RawResult): T {
 export async function version(): Promise<string> {
   return (await backend()).version();
 }
-export async function estimatePath(path: string, dialect: Dialect | null = null): Promise<CostEstimate> {
+export async function estimatePath(path: string, dialect: Dialect): Promise<CostEstimate> {
   return unwrap<CostEstimate>((await backend()).estimatePath(path, dialect));
-}
-export async function estimateBytes(data: Uint8Array, dialect: Dialect | null = null): Promise<CostEstimate> {
-  return unwrap<CostEstimate>((await backend()).estimateBytes(data, dialect));
 }
 export async function refresh(asOf: string): Promise<RefreshReport> {
   return unwrap<RefreshReport>((await backend()).refresh(asOf));

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, copyFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, copyFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,24 +34,11 @@ test("estimatePath success", async () => {
   }
 });
 
-test("estimateBytes autodetect", async () => {
-  const dir = await seed();
-  try {
-    const data = readFileSync(TRANSCRIPT); // Buffer is a Uint8Array
-    const est = await obol.estimateBytes(data);
-    assert.ok(est.total_usd > 0);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-    await clearPricingDir();
-  }
-});
-
 test("missing tables -> ObolError code 1", async () => {
   await setPricingDir("/nonexistent/obol-ts-xyz");
   try {
-    const data = readFileSync(TRANSCRIPT);
     await assert.rejects(
-      () => obol.estimateBytes(data, "claude"),
+      () => obol.estimatePath(TRANSCRIPT, "claude"),
       (e: unknown) => e instanceof obol.ObolError && e.code === 1 && e.kind === "PricingTablesMissing",
     );
   } finally {
@@ -62,9 +49,8 @@ test("missing tables -> ObolError code 1", async () => {
 test("unknown dialect -> ObolError code 7", async () => {
   const dir = await seed();
   try {
-    const data = readFileSync(TRANSCRIPT);
     await assert.rejects(
-      () => obol.estimateBytes(data, "banana" as obol.Dialect),
+      () => obol.estimatePath(TRANSCRIPT, "banana" as obol.Dialect),
       (e: unknown) => e instanceof obol.ObolError && e.code === 7,
     );
   } finally {
