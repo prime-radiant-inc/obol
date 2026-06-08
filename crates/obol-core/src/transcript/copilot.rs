@@ -44,7 +44,9 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
                 model: model.clone(),
                 provider: route_model(model),
                 namespace: "litellm".into(),
-                input_uncached: total_input.saturating_sub(cache_read).saturating_sub(cache_write),
+                input_uncached: total_input
+                    .saturating_sub(cache_read)
+                    .saturating_sub(cache_write),
                 cache_read,
                 cache_write_5m: cache_write,
                 cache_write_1h: 0,

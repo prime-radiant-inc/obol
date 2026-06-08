@@ -1,10 +1,16 @@
 //! Price a Vec<MessageUsage> against a PriceStore into a CostEstimate.
 
-use crate::model::{Approximation, CostEstimate, MessageUsage, ModelCost, PricingSource, Provider, TokenBuckets};
+use crate::model::{
+    Approximation, CostEstimate, MessageUsage, ModelCost, PricingSource, Provider, TokenBuckets,
+};
 use crate::pricing::{cost_for, PriceStore};
 use std::collections::BTreeMap;
 
-pub fn estimate(usages: &[MessageUsage], store: &PriceStore, source: PricingSource) -> CostEstimate {
+pub fn estimate(
+    usages: &[MessageUsage],
+    store: &PriceStore,
+    source: PricingSource,
+) -> CostEstimate {
     let mut per_model: BTreeMap<String, ModelCost> = BTreeMap::new();
     let mut totals = TokenBuckets::default();
     let mut total_usd = 0.0;
