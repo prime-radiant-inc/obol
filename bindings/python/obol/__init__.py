@@ -9,7 +9,7 @@ from typing import Optional
 from . import _lib
 
 __all__ = [
-    "estimate_path", "estimate_bytes", "refresh", "version",
+    "estimate_path", "refresh", "version",
     "CostEstimate", "ModelCost", "TokenBuckets", "Approximation", "RefreshReport", "ObolError",
 ]
 
@@ -104,15 +104,8 @@ def _estimate_result(code: int, payload: Optional[bytes]) -> CostEstimate:
     return CostEstimate.from_json(json.loads(payload))
 
 
-def estimate_path(path, dialect: Optional[str] = None) -> CostEstimate:
-    d = dialect.encode() if dialect else None
-    code, payload = _lib.call(_lib._lib.obol_estimate_path, str(path).encode(), d)
-    return _estimate_result(code, payload)
-
-
-def estimate_bytes(data: bytes, dialect: Optional[str] = None) -> CostEstimate:
-    d = dialect.encode() if dialect else None
-    code, payload = _lib.call(_lib._lib.obol_estimate_bytes, data, len(data), d)
+def estimate_path(path, dialect: str) -> CostEstimate:
+    code, payload = _lib.call(_lib._lib.obol_estimate_path, str(path).encode(), dialect.encode())
     return _estimate_result(code, payload)
 
 

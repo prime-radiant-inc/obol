@@ -46,10 +46,6 @@ _lib.obol_version.argtypes = []
 _lib.obol_string_free.restype = None
 _lib.obol_string_free.argtypes = [ctypes.POINTER(ctypes.c_char)]
 
-_lib.obol_estimate_bytes.restype = ctypes.c_int32
-_lib.obol_estimate_bytes.argtypes = [
-    ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p, c_char_pp,
-]
 _lib.obol_estimate_path.restype = ctypes.c_int32
 _lib.obol_estimate_path.argtypes = [ctypes.c_char_p, ctypes.c_char_p, c_char_pp]
 

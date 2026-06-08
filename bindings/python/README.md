@@ -34,13 +34,10 @@ import obol
 
 print(obol.version())  # "0.1.1"
 
-est = obol.estimate_path("transcript.jsonl", dialect="claude")  # dialect=None auto-detects
+est = obol.estimate_path("transcript.jsonl", dialect="claude")
 print(est.total_usd, est.pricing_as_of)
 for m in est.per_model:
     print(m.model, m.provider, m.subtotal_usd)
-
-# Or from in-memory bytes:
-est = obol.estimate_bytes(open("transcript.jsonl", "rb").read())
 
 # Refresh the on-disk pricing snapshot (network; caller supplies the date):
 report = obol.refresh("2026-06-05")
@@ -51,7 +48,7 @@ On a nonzero status, the call raises `obol.ObolError` carrying `.code`, `.kind`,
 
 ## Pricing tables must exist
 
-`estimate_*` reads a pricing snapshot from disk. Either run `obol refresh` (the CLI), or
+`estimate_path` reads a pricing snapshot from disk. Either run `obol refresh` (the CLI), or
 point `OBOL_PRICING_DIR` at a directory containing `current.json`. With no snapshot the call
 raises `ObolError` with `kind == "PricingTablesMissing"` (code 1).
 
