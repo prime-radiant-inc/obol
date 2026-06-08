@@ -1,6 +1,7 @@
 pub mod claude;
 pub mod codex;
 pub mod gemini;
+pub mod opencode;
 pub mod pi;
 
 use crate::error::ObolError;
@@ -12,6 +13,7 @@ pub enum Dialect {
     Claude,
     Codex,
     Gemini,
+    Opencode,
     Pi,
 }
 
@@ -46,6 +48,12 @@ pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
             return Ok(Dialect::Claude);
         }
     }
+    // Single-document JSON formats (the line loop above can't see these).
+    if let Ok(doc) = serde_json::from_slice::<Value>(bytes) {
+        if doc.get("info").is_some() && doc.get("messages").is_some() {
+            return Ok(Dialect::Opencode);
+        }
+    }
     Err(ObolError::UnknownDialect)
 }
 
@@ -54,6 +62,7 @@ pub fn parse(bytes: &[u8], dialect: Dialect) -> Result<Vec<MessageUsage>, ObolEr
         Dialect::Claude => Ok(claude::parse(bytes)?.usages),
         Dialect::Codex => codex::parse(bytes),
         Dialect::Gemini => gemini::parse(bytes),
+        Dialect::Opencode => opencode::parse(bytes),
         Dialect::Pi => pi::parse(bytes),
     }
 }
