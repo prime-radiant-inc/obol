@@ -1,5 +1,6 @@
 pub mod claude;
 pub mod codex;
+pub mod gemini;
 pub mod pi;
 
 use crate::error::ObolError;
@@ -10,6 +11,7 @@ use serde_json::Value;
 pub enum Dialect {
     Claude,
     Codex,
+    Gemini,
     Pi,
 }
 
@@ -33,6 +35,12 @@ pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
         if v.get("type").and_then(Value::as_str) == Some("session") {
             return Ok(Dialect::Pi);
         }
+        if v.get("type").and_then(Value::as_str) == Some("gemini")
+            || v.pointer("/$set/messages").is_some()
+            || (v.get("projectHash").is_some() && v.get("kind").is_some())
+        {
+            return Ok(Dialect::Gemini);
+        }
         let ty = v.get("type").and_then(Value::as_str);
         if matches!(ty, Some("user") | Some("assistant")) && v.get("message").is_some() {
             return Ok(Dialect::Claude);
@@ -45,6 +53,7 @@ pub fn parse(bytes: &[u8], dialect: Dialect) -> Result<Vec<MessageUsage>, ObolEr
     match dialect {
         Dialect::Claude => Ok(claude::parse(bytes)?.usages),
         Dialect::Codex => codex::parse(bytes),
+        Dialect::Gemini => gemini::parse(bytes),
         Dialect::Pi => pi::parse(bytes),
     }
 }
