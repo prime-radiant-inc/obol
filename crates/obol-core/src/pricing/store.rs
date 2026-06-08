@@ -56,6 +56,13 @@ pub fn current_path() -> PathBuf {
     pricing_dir().join("current.json")
 }
 
+/// The price snapshot compiled into the library — the out-of-the-box fallback used
+/// when no on-disk snapshot is newer (see `lib::estimate_cost`).
+pub fn embedded() -> Result<PriceStore, ObolError> {
+    const BYTES: &[u8] = include_bytes!("../../prices/bundled.json");
+    PriceStore::from_json(BYTES)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,5 +124,15 @@ mod tests {
         std::env::set_var("OBOL_PRICING_DIR", "/tmp/obol-x");
         assert_eq!(pricing_dir(), PathBuf::from("/tmp/obol-x"));
         std::env::remove_var("OBOL_PRICING_DIR");
+    }
+
+    #[test]
+    fn embedded_snapshot_loads_and_has_models() {
+        let s = embedded().expect("embedded snapshot parses");
+        assert!(!s.as_of.is_empty(), "embedded snapshot must carry an as_of");
+        assert!(
+            s.lookup("litellm", "claude-opus-4-8").is_some(),
+            "embedded snapshot should price a known model"
+        );
     }
 }
