@@ -15,7 +15,7 @@ enum Cmd {
     /// Estimate the cost of a transcript file.
     Estimate {
         path: PathBuf,
-        #[arg(long, value_parser = ["claude", "codex", "pi"])]
+        #[arg(long, value_parser = ["claude", "codex", "pi", "gemini", "opencode", "copilot", "kimi"])]
         dialect: Option<String>,
         #[arg(long)]
         json: bool,
@@ -39,7 +39,12 @@ fn run() -> Result<(), String> {
             let hint = dialect.as_deref().map(|d| match d {
                 "claude" => Dialect::Claude,
                 "codex" => Dialect::Codex,
-                _ => Dialect::Pi,
+                "pi" => Dialect::Pi,
+                "gemini" => Dialect::Gemini,
+                "opencode" => Dialect::Opencode,
+                "copilot" => Dialect::Copilot,
+                "kimi" => Dialect::Kimi,
+                other => unreachable!("clap value_parser restricts dialect; got {other:?}"),
             });
             let est = estimate_cost(Source::Path(&path), hint).map_err(|e| e.to_string())?;
             if json {

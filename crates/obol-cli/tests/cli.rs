@@ -54,3 +54,25 @@ fn estimate_reports_bundled_pricing_source() {
         .stdout(predicates::str::contains("pricing_source"))
         .stdout(predicates::str::contains("bundled"));
 }
+
+#[test]
+fn estimate_gemini_dialect_string() {
+    let tmp = tempfile::tempdir().unwrap();
+    let gemini = include_str!("../../obol-core/tests/fixtures/gemini-mini.jsonl");
+    let transcript = tmp.path().join("session.jsonl");
+    fs::write(&transcript, gemini).unwrap();
+
+    Command::cargo_bin("obol")
+        .unwrap()
+        .env_remove("OBOL_PRICING_DIR")
+        .args([
+            "estimate",
+            transcript.to_str().unwrap(),
+            "--dialect",
+            "gemini",
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("gemini-3-flash-preview"));
+}
