@@ -147,7 +147,14 @@ mod api_tests {
 
     #[test]
     fn falls_back_to_embedded_when_no_local_snapshot() {
+        // Force "no on-disk snapshot" hermetically: point XDG at an empty dir so
+        // `current_path()` resolves to a nonexistent file and the embedded snapshot
+        // is used. (Setting OBOL_PRICING_DIR instead would take the explicit-override
+        // branch and error PricingTablesMissing rather than fall back to embedded.)
+        let xdg = std::env::temp_dir().join(format!("obol-xdg-{}", std::process::id()));
+        std::fs::create_dir_all(&xdg).unwrap();
         std::env::remove_var("OBOL_PRICING_DIR");
+        std::env::set_var("XDG_DATA_HOME", &xdg);
         let est = estimate_cost(
             Source::Bytes(include_bytes!("../tests/fixtures/claude-mini.jsonl")),
             Some(Dialect::Claude),
@@ -155,6 +162,8 @@ mod api_tests {
         .unwrap();
         assert_eq!(est.pricing_source, crate::model::PricingSource::Bundled);
         assert!(est.total_usd > 0.0, "embedded snapshot should price claude");
+        std::env::remove_var("XDG_DATA_HOME");
+        std::fs::remove_dir_all(&xdg).ok();
     }
 
     #[test]
