@@ -19,7 +19,7 @@ async function seed(): Promise<string> {
 }
 
 test("version", async () => {
-  assert.equal(await obol.version(), "0.2.0");
+  assert.equal(await obol.version(), "0.2.1");
 });
 
 test("estimatePath success", async () => {
