@@ -1,0 +1,3 @@
+{"sessionId":"329cdf31","projectHash":"abc","startTime":"2026-06-08T18:46:47.000Z","kind":"main"}
+{"$set":{"messages":[{"id":"m0","type":"user","content":[{"text":"Hello"}]},{"type":"gemini","model":"gemini-3-flash-preview","tokens":{"input":9431,"output":12,"cached":0,"thoughts":94,"tool":0,"total":9537}}],"lastUpdated":"2026-06-08T18:46:50.000Z"}}
+{"$set":{"lastUpdated":"2026-06-08T18:46:51.000Z"}}

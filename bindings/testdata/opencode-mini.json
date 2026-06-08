@@ -1,0 +1,8 @@
+{"info":{"id":"ses_15777484","directory":"/tmp/p"},"messages":[
+  {"role":"user","parts":[{"type":"text","text":"hi"}]},
+  {"role":"assistant","modelID":"gpt-5.5","providerID":"openai","cost":0,
+   "tokens":{"input":7035,"output":12,"reasoning":0,"cache":{"read":0,"write":0}},
+   "parts":[{"type":"step-finish","tokens":{"total":7047,"input":7035,"output":12,"reasoning":0,"cache":{"write":0,"read":0}},"cost":0}]},
+  {"role":"assistant","modelID":"gpt-5.5","providerID":"openai",
+   "parts":[{"type":"step-finish","tokens":{"input":100,"output":5,"reasoning":2,"cache":{"read":50,"write":7}}}]}
+]}
