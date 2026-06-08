@@ -43,6 +43,23 @@ pub struct ModelCost {
     pub subtotal_usd: f64,
 }
 
+/// Which snapshot priced this estimate: the one compiled into the library, or one
+/// read from disk (`refresh`ed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PricingSource {
+    Bundled,
+    Local,
+}
+
+impl serde::Serialize for PricingSource {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(match self {
+            PricingSource::Bundled => "bundled",
+            PricingSource::Local => "local",
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "detail")]
 pub enum Approximation {
@@ -59,6 +76,7 @@ pub struct CostEstimate {
     pub unpriced_models: Vec<String>,
     pub approximations: Vec<Approximation>,
     pub pricing_as_of: String,
+    pub pricing_source: PricingSource,
 }
 
 /// One billable API call extracted from a transcript. Produced by the dialect
@@ -106,10 +124,24 @@ mod tests {
             unpriced_models: vec![],
             approximations: vec![Approximation::AssumedStandardTier],
             pricing_as_of: "2026-06-04".into(),
+            pricing_source: PricingSource::Bundled,
         };
         let v: serde_json::Value = serde_json::to_value(&est).unwrap();
         assert_eq!(v["total_usd"], 1.5);
         assert_eq!(v["pricing_as_of"], "2026-06-04");
         assert_eq!(v["approximations"][0]["kind"], "AssumedStandardTier");
+        assert_eq!(v["pricing_source"], "bundled");
+    }
+
+    #[test]
+    fn pricing_source_serializes_lowercase() {
+        assert_eq!(
+            serde_json::to_value(PricingSource::Bundled).unwrap(),
+            serde_json::json!("bundled")
+        );
+        assert_eq!(
+            serde_json::to_value(PricingSource::Local).unwrap(),
+            serde_json::json!("local")
+        );
     }
 }
