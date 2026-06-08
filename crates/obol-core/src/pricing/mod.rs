@@ -2,7 +2,7 @@
 
 pub mod refresh;
 pub mod store;
-pub use store::{current_path, pricing_dir, PriceStore};
+pub use store::{current_path, embedded, pricing_dir, PriceStore};
 
 use crate::model::MessageUsage;
 use serde::{Deserialize, Serialize};
