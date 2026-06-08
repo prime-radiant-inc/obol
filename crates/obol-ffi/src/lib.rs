@@ -122,6 +122,10 @@ fn parse_dialect(dialect: *const c_char) -> Result<Option<Dialect>, ()> {
         "claude" => Ok(Some(Dialect::Claude)),
         "codex" => Ok(Some(Dialect::Codex)),
         "pi" => Ok(Some(Dialect::Pi)),
+        "gemini" => Ok(Some(Dialect::Gemini)),
+        "opencode" => Ok(Some(Dialect::Opencode)),
+        "copilot" => Ok(Some(Dialect::Copilot)),
+        "kimi" => Ok(Some(Dialect::Kimi)),
         _ => Err(()),
     }
 }
