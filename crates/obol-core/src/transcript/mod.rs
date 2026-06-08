@@ -2,6 +2,7 @@ pub mod claude;
 pub mod codex;
 pub mod copilot;
 pub mod gemini;
+pub mod kimi;
 pub mod opencode;
 pub mod pi;
 
@@ -15,6 +16,7 @@ pub enum Dialect {
     Codex,
     Copilot,
     Gemini,
+    Kimi,
     Opencode,
     Pi,
 }
@@ -41,6 +43,9 @@ pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
             Some("session.shutdown") | Some("assistant.message") | Some("session.start")
         ) {
             return Ok(Dialect::Copilot);
+        }
+        if v.get("type").and_then(Value::as_str) == Some("usage.record") {
+            return Ok(Dialect::Kimi);
         }
         if v.get("type").and_then(Value::as_str) == Some("session") {
             return Ok(Dialect::Pi);
@@ -71,6 +76,7 @@ pub fn parse(bytes: &[u8], dialect: Dialect) -> Result<Vec<MessageUsage>, ObolEr
         Dialect::Codex => codex::parse(bytes),
         Dialect::Copilot => copilot::parse(bytes),
         Dialect::Gemini => gemini::parse(bytes),
+        Dialect::Kimi => kimi::parse(bytes),
         Dialect::Opencode => opencode::parse(bytes),
         Dialect::Pi => pi::parse(bytes),
     }
