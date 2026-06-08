@@ -9,6 +9,7 @@ pub mod transcript;
 pub use error::ObolError;
 pub use model::{Approximation, CostEstimate, MessageUsage, ModelCost, Provider, TokenBuckets};
 pub use transcript::Dialect;
+use crate::model::PricingSource;
 
 use std::path::{Path, PathBuf};
 
@@ -27,11 +28,32 @@ pub struct RefreshReport {
     pub written_to: PathBuf,
 }
 
+/// Resolve the price snapshot. Explicit OBOL_PRICING_DIR wins absolutely; otherwise
+/// pick whichever of {on-disk current.json, embedded} has the newer `as_of`, on-disk
+/// winning ties; embedded is the floor.
+fn resolve_store() -> Result<(pricing::PriceStore, PricingSource), ObolError> {
+    if std::env::var_os("OBOL_PRICING_DIR").is_some() {
+        let store = pricing::PriceStore::load(&pricing::current_path())?;
+        return Ok((store, PricingSource::Local));
+    }
+    let embedded = pricing::embedded()?;
+    let local_path = pricing::current_path();
+    if local_path.exists() {
+        if let Ok(local) = pricing::PriceStore::load(&local_path) {
+            if local.as_of >= embedded.as_of {
+                return Ok((local, PricingSource::Local));
+            }
+        }
+    }
+    Ok((embedded, PricingSource::Bundled))
+}
+
 /// Estimate the cost of a transcript. `dialect` is an optional hint; when `None`,
-/// the dialect is detected from the content. Loads the active price snapshot from
-/// disk (errors with `PricingTablesMissing` if absent).
+/// the dialect is detected from the content. Resolves the price snapshot: explicit
+/// `OBOL_PRICING_DIR` wins; otherwise the newer of the on-disk snapshot and the
+/// bundled snapshot is used (embedded is the floor).
 pub fn estimate_cost(source: Source, dialect: Option<Dialect>) -> Result<CostEstimate, ObolError> {
-    let store = pricing::PriceStore::load(&pricing::current_path())?;
+    let (store, source_kind) = resolve_store()?;
     let bytes: Vec<u8> = match source {
         Source::Path(p) => std::fs::read(p)?,
         Source::Bytes(b) => b.to_vec(),
@@ -41,7 +63,7 @@ pub fn estimate_cost(source: Source, dialect: Option<Dialect>) -> Result<CostEst
         None => transcript::detect(&bytes)?,
     };
     let usages = transcript::parse(&bytes, dialect)?;
-    Ok(cost::estimate(&usages, &store))
+    Ok(cost::estimate(&usages, &store, source_kind))
 }
 
 /// Fetch the LiteLLM sheet and write it as the active snapshot. `as_of` is the
@@ -120,6 +142,38 @@ mod api_tests {
         let est = estimate_cost(Source::Path(&transcript), None).unwrap();
         assert!(est.total_usd > 0.0);
 
+        std::fs::remove_dir_all(&dir).ok();
+        std::env::remove_var("OBOL_PRICING_DIR");
+    }
+
+    #[test]
+    fn falls_back_to_embedded_when_no_local_snapshot() {
+        std::env::remove_var("OBOL_PRICING_DIR");
+        let est = estimate_cost(
+            Source::Bytes(include_bytes!("../tests/fixtures/claude-mini.jsonl")),
+            Some(Dialect::Claude),
+        )
+        .unwrap();
+        assert_eq!(est.pricing_source, crate::model::PricingSource::Bundled);
+        assert!(est.total_usd > 0.0, "embedded snapshot should price claude");
+    }
+
+    #[test]
+    fn explicit_override_uses_local_source() {
+        let dir = std::env::temp_dir().join(format!("obol-resolve-{}", std::process::id()));
+        std::env::set_var("OBOL_PRICING_DIR", &dir);
+        let store = pricing::refresh::normalize_litellm(
+            include_bytes!("../tests/fixtures/litellm-sample.json"),
+            "2099-01-01",
+        )
+        .unwrap();
+        store.save(&pricing::current_path()).unwrap();
+        let est = estimate_cost(
+            Source::Bytes(include_bytes!("../tests/fixtures/claude-mini.jsonl")),
+            Some(Dialect::Claude),
+        )
+        .unwrap();
+        assert_eq!(est.pricing_source, crate::model::PricingSource::Local);
         std::fs::remove_dir_all(&dir).ok();
         std::env::remove_var("OBOL_PRICING_DIR");
     }

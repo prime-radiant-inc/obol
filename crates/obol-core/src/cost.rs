@@ -4,7 +4,7 @@ use crate::model::{Approximation, CostEstimate, MessageUsage, ModelCost, Pricing
 use crate::pricing::{cost_for, PriceStore};
 use std::collections::BTreeMap;
 
-pub fn estimate(usages: &[MessageUsage], store: &PriceStore) -> CostEstimate {
+pub fn estimate(usages: &[MessageUsage], store: &PriceStore, source: PricingSource) -> CostEstimate {
     let mut per_model: BTreeMap<String, ModelCost> = BTreeMap::new();
     let mut totals = TokenBuckets::default();
     let mut total_usd = 0.0;
@@ -69,7 +69,7 @@ pub fn estimate(usages: &[MessageUsage], store: &PriceStore) -> CostEstimate {
         unpriced_models: unpriced,
         approximations,
         pricing_as_of: store.as_of.clone(),
-        pricing_source: PricingSource::Bundled, // real value threaded in Task 3
+        pricing_source: source,
     }
 }
 
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn prices_known_model_exactly() {
-        let est = estimate(&[opus_usage()], &store());
+        let est = estimate(&[opus_usage()], &store(), PricingSource::Bundled);
         // 1M input @5 + 1M output @25 = 30
         assert!((est.total_usd - 30.0).abs() < 1e-9, "got {}", est.total_usd);
         assert_eq!(est.per_model.len(), 1);
@@ -113,7 +113,7 @@ mod tests {
     fn unpriced_model_surfaces_not_silently_zero() {
         let mut u = opus_usage();
         u.model = "claude-opus-9-9".into();
-        let est = estimate(&[u], &store());
+        let est = estimate(&[u], &store(), PricingSource::Bundled);
         assert_eq!(est.total_usd, 0.0);
         assert_eq!(est.unpriced_models, vec!["claude-opus-9-9".to_string()]);
         assert!(est
