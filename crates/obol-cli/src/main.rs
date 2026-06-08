@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use obol_core::{estimate_cost, refresh_pricing_tables, Dialect, Source};
+use obol_core::{estimate_cost, refresh_pricing_tables, Dialect, PricingSource, Source};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -48,9 +48,13 @@ fn run() -> Result<(), String> {
                     serde_json::to_string_pretty(&est).map_err(|e| e.to_string())?
                 );
             } else {
+                let src = match est.pricing_source {
+                    PricingSource::Bundled => "bundled",
+                    PricingSource::Local => "local",
+                };
                 println!(
-                    "total: ${:.4}  (pricing as of {})",
-                    est.total_usd, est.pricing_as_of
+                    "total: ${:.4}  (pricing as of {}, {})",
+                    est.total_usd, est.pricing_as_of, src
                 );
                 for m in &est.per_model {
                     println!("  {:30} ${:.4}", m.model, m.subtotal_usd);

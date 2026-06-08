@@ -7,9 +7,8 @@ pub mod pricing;
 pub mod transcript;
 
 pub use error::ObolError;
-pub use model::{Approximation, CostEstimate, MessageUsage, ModelCost, Provider, TokenBuckets};
+pub use model::{Approximation, CostEstimate, MessageUsage, ModelCost, PricingSource, Provider, TokenBuckets};
 pub use transcript::Dialect;
-use crate::model::PricingSource;
 
 use std::path::{Path, PathBuf};
 
