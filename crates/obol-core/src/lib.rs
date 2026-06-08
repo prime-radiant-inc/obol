@@ -12,13 +12,6 @@ pub use transcript::Dialect;
 
 use std::path::{Path, PathBuf};
 
-/// Where to read the transcript bytes from. The dialect hint is a separate
-/// argument to `estimate_cost`, so it applies equally to a path or to bytes.
-pub enum Source<'a> {
-    Path(&'a Path),
-    Bytes(&'a [u8]),
-}
-
 /// Report from a pricing refresh.
 #[derive(Debug, serde::Serialize)]
 pub struct RefreshReport {
@@ -47,20 +40,11 @@ fn resolve_store() -> Result<(pricing::PriceStore, PricingSource), ObolError> {
     Ok((embedded, PricingSource::Bundled))
 }
 
-/// Estimate the cost of a transcript. `dialect` is an optional hint; when `None`,
-/// the dialect is detected from the content. Resolves the price snapshot: explicit
-/// `OBOL_PRICING_DIR` wins; otherwise the newer of the on-disk snapshot and the
-/// bundled snapshot is used (embedded is the floor).
-pub fn estimate_cost(source: Source, dialect: Option<Dialect>) -> Result<CostEstimate, ObolError> {
+/// Estimate the cost of a transcript file under the given dialect. Loads the active
+/// price snapshot (bundled fallback) and prices the parsed usage.
+pub fn estimate_cost(path: &Path, dialect: Dialect) -> Result<CostEstimate, ObolError> {
     let (store, source_kind) = resolve_store()?;
-    let bytes: Vec<u8> = match source {
-        Source::Path(p) => std::fs::read(p)?,
-        Source::Bytes(b) => b.to_vec(),
-    };
-    let dialect = match dialect {
-        Some(d) => d,
-        None => transcript::detect(&bytes)?,
-    };
+    let bytes = std::fs::read(path)?;
     let usages = transcript::parse(&bytes, dialect)?;
     Ok(cost::estimate(&usages, &store, source_kind))
 }
@@ -92,9 +76,10 @@ mod api_tests {
     #[test]
     fn estimate_cost_on_bytes_with_missing_tables_errors() {
         std::env::set_var("OBOL_PRICING_DIR", "/nonexistent/obol-xyz");
-        let data = include_bytes!("../tests/fixtures/claude-mini.jsonl");
-        let r = estimate_cost(Source::Bytes(data), Some(Dialect::Claude));
-        assert!(matches!(r, Err(ObolError::PricingTablesMissing(_))));
+        let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
+        std::fs::write(&tmp, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
+        assert!(matches!(estimate_cost(&tmp, Dialect::Claude), Err(ObolError::PricingTablesMissing(_))));
+        std::fs::remove_file(&tmp).ok();
         std::env::remove_var("OBOL_PRICING_DIR");
     }
 
@@ -110,17 +95,19 @@ mod api_tests {
         .unwrap();
         store.save(&pricing::current_path()).unwrap();
 
-        let data = include_bytes!("../tests/fixtures/claude-mini.jsonl");
-        let est = estimate_cost(Source::Bytes(data), Some(Dialect::Claude)).unwrap();
+        let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
+        std::fs::write(&tmp, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
+        let est = estimate_cost(&tmp, Dialect::Claude).unwrap();
         assert!(est.total_usd > 0.0);
         assert_eq!(est.pricing_as_of, "2026-06-04");
+        std::fs::remove_file(&tmp).ok();
 
         std::fs::remove_dir_all(&dir).ok();
         std::env::remove_var("OBOL_PRICING_DIR");
     }
 
     #[test]
-    fn estimate_cost_from_path_with_autodetect() {
+    fn estimate_cost_from_path_then_detect() {
         let dir = std::env::temp_dir().join(format!("obol-path-{}", std::process::id()));
         std::env::set_var("OBOL_PRICING_DIR", &dir);
         let store = pricing::refresh::normalize_litellm(
@@ -130,15 +117,16 @@ mod api_tests {
         .unwrap();
         store.save(&pricing::current_path()).unwrap();
 
-        // Write the Claude fixture to a real file and price it via Source::Path
-        // with NO dialect hint — exercises both the path input and auto-detect.
+        // Write the Claude fixture to a real file, detect dialect, then price.
         let transcript = dir.join("session.jsonl");
         std::fs::write(
             &transcript,
             include_bytes!("../tests/fixtures/claude-mini.jsonl"),
         )
         .unwrap();
-        let est = estimate_cost(Source::Path(&transcript), None).unwrap();
+        let bytes = std::fs::read(&transcript).unwrap();
+        let d = transcript::detect(&bytes).unwrap();
+        let est = estimate_cost(&transcript, d).unwrap();
         assert!(est.total_usd > 0.0);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -155,13 +143,12 @@ mod api_tests {
         std::fs::create_dir_all(&xdg).unwrap();
         std::env::remove_var("OBOL_PRICING_DIR");
         std::env::set_var("XDG_DATA_HOME", &xdg);
-        let est = estimate_cost(
-            Source::Bytes(include_bytes!("../tests/fixtures/claude-mini.jsonl")),
-            Some(Dialect::Claude),
-        )
-        .unwrap();
+        let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
+        std::fs::write(&tmp, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
+        let est = estimate_cost(&tmp, Dialect::Claude).unwrap();
         assert_eq!(est.pricing_source, crate::model::PricingSource::Bundled);
         assert!(est.total_usd > 0.0, "embedded snapshot should price claude");
+        std::fs::remove_file(&tmp).ok();
         std::env::remove_var("XDG_DATA_HOME");
         std::fs::remove_dir_all(&xdg).ok();
     }
@@ -176,12 +163,11 @@ mod api_tests {
         )
         .unwrap();
         store.save(&pricing::current_path()).unwrap();
-        let est = estimate_cost(
-            Source::Bytes(include_bytes!("../tests/fixtures/claude-mini.jsonl")),
-            Some(Dialect::Claude),
-        )
-        .unwrap();
+        let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
+        std::fs::write(&tmp, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
+        let est = estimate_cost(&tmp, Dialect::Claude).unwrap();
         assert_eq!(est.pricing_source, crate::model::PricingSource::Local);
+        std::fs::remove_file(&tmp).ok();
         std::fs::remove_dir_all(&dir).ok();
         std::env::remove_var("OBOL_PRICING_DIR");
     }
@@ -189,17 +175,16 @@ mod api_tests {
     #[test]
     fn kimi_model_surfaces_unpriced_loudly() {
         std::env::remove_var("OBOL_PRICING_DIR");
-        let est = estimate_cost(
-            Source::Bytes(include_bytes!("../tests/fixtures/kimi-mini.jsonl")),
-            Some(Dialect::Kimi),
-        )
-        .unwrap();
+        let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
+        std::fs::write(&tmp, include_bytes!("../tests/fixtures/kimi-mini.jsonl").as_slice()).unwrap();
+        let est = estimate_cost(&tmp, Dialect::Kimi).unwrap();
         assert_eq!(est.total_usd, 0.0, "kimi-for-coding is unpriced -> $0");
         assert!(
             est.unpriced_models.contains(&"kimi-for-coding".to_string()),
             "must name the unpriced model: {:?}",
             est.unpriced_models
         );
+        std::fs::remove_file(&tmp).ok();
     }
 
     #[test]

@@ -24,7 +24,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::ptr;
 
-use obol_core::{estimate_cost, refresh_pricing_tables, Dialect, ObolError, Source};
+use obol_core::{estimate_cost, refresh_pricing_tables, transcript, Dialect, ObolError};
 
 const OK: i32 = 0;
 const ERR_PRICING_MISSING: i32 = 1;
@@ -163,7 +163,25 @@ pub extern "C" fn obol_estimate_bytes(
             }
         };
         let bytes = std::slice::from_raw_parts(data, len);
-        finish(out_json, estimate_cost(Source::Bytes(bytes), dialect))
+        let resolved = match dialect {
+            Some(d) => d,
+            None => match transcript::detect(bytes) {
+                Ok(d) => d,
+                Err(e) => return fail(out_json, ERR_UNKNOWN_DIALECT, "UnknownDialect", &e.to_string()),
+            },
+        };
+        let tmp = std::env::temp_dir().join(format!(
+            "obol-ffi-{}-{}.jsonl",
+            std::process::id(),
+            // use pointer address as a cheap unique discriminant within one call
+            data as usize
+        ));
+        if let Err(e) = std::fs::write(&tmp, bytes) {
+            return fail(out_json, ERR_IO, "Io", &e.to_string());
+        }
+        let result = finish(out_json, estimate_cost(&tmp, resolved));
+        std::fs::remove_file(&tmp).ok();
+        result
     }));
     match result {
         Ok(code) => code,
@@ -220,10 +238,21 @@ pub extern "C" fn obol_estimate_path(
                 );
             }
         };
-        finish(
-            out_json,
-            estimate_cost(Source::Path(Path::new(path)), dialect),
-        )
+        let path_ref = Path::new(path);
+        let resolved = match dialect {
+            Some(d) => d,
+            None => {
+                let bytes = match std::fs::read(path_ref) {
+                    Ok(b) => b,
+                    Err(e) => return fail(out_json, ERR_IO, "Io", &e.to_string()),
+                };
+                match transcript::detect(&bytes) {
+                    Ok(d) => d,
+                    Err(e) => return fail(out_json, ERR_UNKNOWN_DIALECT, "UnknownDialect", &e.to_string()),
+                }
+            }
+        };
+        finish(out_json, estimate_cost(path_ref, resolved))
     }));
     match result {
         Ok(code) => code,

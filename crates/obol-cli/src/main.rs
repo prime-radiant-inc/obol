@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use obol_core::{estimate_cost, refresh_pricing_tables, Dialect, PricingSource, Source};
+use obol_core::{estimate_cost, refresh_pricing_tables, Dialect, PricingSource};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -36,17 +36,24 @@ fn run() -> Result<(), String> {
             dialect,
             json,
         } => {
-            let hint = dialect.as_deref().map(|d| match d {
-                "claude" => Dialect::Claude,
-                "codex" => Dialect::Codex,
-                "pi" => Dialect::Pi,
-                "gemini" => Dialect::Gemini,
-                "opencode" => Dialect::Opencode,
-                "copilot" => Dialect::Copilot,
-                "kimi" => Dialect::Kimi,
-                other => unreachable!("clap value_parser restricts dialect; got {other:?}"),
-            });
-            let est = estimate_cost(Source::Path(&path), hint).map_err(|e| e.to_string())?;
+            let dialect = match dialect.as_deref() {
+                Some(d) => match d {
+                    "claude" => Dialect::Claude,
+                    "codex" => Dialect::Codex,
+                    "pi" => Dialect::Pi,
+                    "gemini" => Dialect::Gemini,
+                    "opencode" => Dialect::Opencode,
+                    "copilot" => Dialect::Copilot,
+                    "kimi" => Dialect::Kimi,
+                    other => unreachable!("clap value_parser restricts dialect; got {other:?}"),
+                },
+                None => {
+                    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+                    obol_core::transcript::detect(&bytes)
+                        .map_err(|e| format!("{e}; pass --dialect to choose one explicitly"))?
+                }
+            };
+            let est = estimate_cost(&path, dialect).map_err(|e| e.to_string())?;
             if json {
                 println!(
                     "{}",
