@@ -7,14 +7,14 @@
 //! obol-ffi: a C ABI over obol-core. JSON at the seam; the Rust core owns all accounting.
 //!
 //! OWNERSHIP & SAFETY CONTRACT (honor in every binding):
-//!  1. Inputs (path/dialect/data/as_of) are borrowed; obol copies what it needs before
+//!  1. Inputs (path/dialect/as_of) are borrowed; obol copies what it needs before
 //!     returning. Caller may free them immediately after the call.
 //!  2. Every `*out_json` is obol-owned (Rust allocator). Free ONLY via `obol_string_free`.
 //!     Freeing any other way is undefined behavior. `obol_string_free(NULL)` is a no-op.
 //!  3. Each function NULL-inits `*out_json` first, then runs inside catch_unwind: a caught
 //!     panic yields status 8 and leaves a freeable string-or-NULL, never garbage.
-//!  4. NULL required pointer -> status 7. NULL `dialect` -> auto-detect.
-//!  5. `obol_estimate_*` is reentrant/stateless. `obol_refresh_pricing` writes the on-disk
+//!  4. NULL required pointer -> status 7. NULL `dialect` -> status 7 (dialect is required).
+//!  5. `obol_estimate_path` is reentrant/stateless. `obol_refresh_pricing` writes the on-disk
 //!     snapshot; concurrent refresh is the caller's concern (same as the Rust lib).
 //!  6. Input strings must be valid UTF-8; output JSON always is.
 
@@ -24,7 +24,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::ptr;
 
-use obol_core::{estimate_cost, refresh_pricing_tables, transcript, Dialect, ObolError};
+use obol_core::{estimate_cost, refresh_pricing_tables, Dialect, ObolError};
 
 const OK: i32 = 0;
 const ERR_PRICING_MISSING: i32 = 1;
@@ -110,89 +110,21 @@ unsafe fn finish<T: serde::Serialize>(out: *mut *mut c_char, r: Result<T, ObolEr
     }
 }
 
-/// NULL -> auto-detect (Ok(None)); known string -> Ok(Some). Unknown/invalid UTF-8 -> Err(()).
-fn parse_dialect(dialect: *const c_char) -> Result<Option<Dialect>, ()> {
+/// NULL/unknown/invalid-UTF-8 dialect -> Err(()). Known string -> Ok(Dialect).
+fn parse_dialect(dialect: *const c_char) -> Result<Dialect, ()> {
     if dialect.is_null() {
-        return Ok(None);
+        return Err(());
     }
-    let s = unsafe { CStr::from_ptr(dialect) }
-        .to_str()
-        .map_err(|_| ())?;
+    let s = unsafe { CStr::from_ptr(dialect) }.to_str().map_err(|_| ())?;
     match s {
-        "claude" => Ok(Some(Dialect::Claude)),
-        "codex" => Ok(Some(Dialect::Codex)),
-        "pi" => Ok(Some(Dialect::Pi)),
-        "gemini" => Ok(Some(Dialect::Gemini)),
-        "opencode" => Ok(Some(Dialect::Opencode)),
-        "copilot" => Ok(Some(Dialect::Copilot)),
-        "kimi" => Ok(Some(Dialect::Kimi)),
+        "claude" => Ok(Dialect::Claude),
+        "codex" => Ok(Dialect::Codex),
+        "pi" => Ok(Dialect::Pi),
+        "gemini" => Ok(Dialect::Gemini),
+        "opencode" => Ok(Dialect::Opencode),
+        "copilot" => Ok(Dialect::Copilot),
+        "kimi" => Ok(Dialect::Kimi),
         _ => Err(()),
-    }
-}
-
-/// Estimate cost from transcript bytes (borrowed). See the ownership contract.
-#[no_mangle]
-pub extern "C" fn obol_estimate_bytes(
-    data: *const u8,
-    len: usize,
-    dialect: *const c_char,
-    out_json: *mut *mut c_char,
-) -> i32 {
-    if out_json.is_null() {
-        return ERR_INVALID_ARG;
-    }
-    unsafe { *out_json = ptr::null_mut() };
-    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-        if data.is_null() {
-            return fail(
-                out_json,
-                ERR_INVALID_ARG,
-                "InvalidArgument",
-                "data pointer is NULL",
-            );
-        }
-        let dialect = match parse_dialect(dialect) {
-            Ok(d) => d,
-            Err(()) => {
-                return fail(
-                    out_json,
-                    ERR_INVALID_ARG,
-                    "InvalidArgument",
-                    "unknown or invalid dialect string",
-                );
-            }
-        };
-        let bytes = std::slice::from_raw_parts(data, len);
-        let resolved = match dialect {
-            Some(d) => d,
-            None => match transcript::detect(bytes) {
-                Ok(d) => d,
-                Err(e) => return fail(out_json, ERR_UNKNOWN_DIALECT, "UnknownDialect", &e.to_string()),
-            },
-        };
-        let tmp = std::env::temp_dir().join(format!(
-            "obol-ffi-{}-{}.jsonl",
-            std::process::id(),
-            // use pointer address as a cheap unique discriminant within one call
-            data as usize
-        ));
-        if let Err(e) = std::fs::write(&tmp, bytes) {
-            return fail(out_json, ERR_IO, "Io", &e.to_string());
-        }
-        let result = finish(out_json, estimate_cost(&tmp, resolved));
-        std::fs::remove_file(&tmp).ok();
-        result
-    }));
-    match result {
-        Ok(code) => code,
-        Err(_) => unsafe {
-            fail(
-                out_json,
-                ERR_PANIC,
-                "Panic",
-                "internal panic caught at FFI boundary",
-            )
-        },
     }
 }
 
@@ -234,25 +166,11 @@ pub extern "C" fn obol_estimate_path(
                     out_json,
                     ERR_INVALID_ARG,
                     "InvalidArgument",
-                    "unknown or invalid dialect string",
+                    "dialect is required and must be a known value (NULL/unknown rejected)",
                 );
             }
         };
-        let path_ref = Path::new(path);
-        let resolved = match dialect {
-            Some(d) => d,
-            None => {
-                let bytes = match std::fs::read(path_ref) {
-                    Ok(b) => b,
-                    Err(e) => return fail(out_json, ERR_IO, "Io", &e.to_string()),
-                };
-                match transcript::detect(&bytes) {
-                    Ok(d) => d,
-                    Err(e) => return fail(out_json, ERR_UNKNOWN_DIALECT, "UnknownDialect", &e.to_string()),
-                }
-            }
-        };
-        finish(out_json, estimate_cost(path_ref, resolved))
+        finish(out_json, estimate_cost(Path::new(path), dialect))
     }));
     match result {
         Ok(code) => code,
@@ -379,13 +297,15 @@ mod tests {
     }
 
     #[test]
-    fn estimate_bytes_success_with_seeded_store() {
+    fn estimate_path_success_with_seeded_store() {
         let dir = seed_pricing();
-        let data = include_bytes!("../tests/fixtures/claude-mini.jsonl");
+        let f = dir.join("session.jsonl");
+        std::fs::write(&f, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
+        let cpath = CString::new(f.to_str().unwrap()).unwrap();
+        let claude = CString::new("claude").unwrap();
         let mut out = out_ptr();
-        let code = obol_estimate_bytes(data.as_ptr(), data.len(), std::ptr::null(), &mut out);
+        let code = obol_estimate_path(cpath.as_ptr(), claude.as_ptr(), &mut out);
         assert_eq!(code, OK, "code={code}");
-        assert!(!out.is_null());
         let json = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
         obol_string_free(out);
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -395,54 +315,26 @@ mod tests {
     }
 
     #[test]
-    fn estimate_bytes_missing_tables_is_code_1() {
-        std::env::set_var("OBOL_PRICING_DIR", "/nonexistent/obol-ffi-xyz");
-        let data = include_bytes!("../tests/fixtures/claude-mini.jsonl");
+    fn estimate_path_null_dialect_is_invalid_arg() {
+        let dir = seed_pricing();
+        let f = dir.join("session.jsonl");
+        std::fs::write(&f, b"{}").unwrap();
+        let cpath = CString::new(f.to_str().unwrap()).unwrap();
         let mut out = out_ptr();
-        let code = obol_estimate_bytes(data.as_ptr(), data.len(), std::ptr::null(), &mut out);
-        assert_eq!(code, ERR_PRICING_MISSING);
-        let json = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
+        let code = obol_estimate_path(cpath.as_ptr(), std::ptr::null(), &mut out);
+        assert_eq!(code, ERR_INVALID_ARG, "NULL dialect must be rejected");
         obol_string_free(out);
-        assert!(json.contains("PricingTablesMissing"));
+        std::fs::remove_dir_all(&dir).ok();
         std::env::remove_var("OBOL_PRICING_DIR");
-    }
-
-    #[test]
-    fn estimate_bytes_unknown_dialect_string_is_code_7() {
-        let data = b"{}";
-        let bad = CString::new("banana").unwrap();
-        let mut out = out_ptr();
-        let code = obol_estimate_bytes(data.as_ptr(), data.len(), bad.as_ptr(), &mut out);
-        assert_eq!(code, ERR_INVALID_ARG);
-        obol_string_free(out);
-    }
-
-    #[test]
-    fn estimate_bytes_null_out_is_code_7() {
-        let data = b"{}";
-        let code = obol_estimate_bytes(
-            data.as_ptr(),
-            data.len(),
-            std::ptr::null(),
-            std::ptr::null_mut(),
-        );
-        assert_eq!(code, ERR_INVALID_ARG);
-    }
-
-    #[test]
-    fn estimate_bytes_null_data_is_code_7() {
-        let mut out = out_ptr();
-        let code = obol_estimate_bytes(std::ptr::null(), 0, std::ptr::null(), &mut out);
-        assert_eq!(code, ERR_INVALID_ARG);
-        obol_string_free(out);
     }
 
     #[test]
     fn estimate_path_bad_path_is_io_error() {
         let dir = seed_pricing();
         let p = CString::new("/nonexistent/obol/transcript.jsonl").unwrap();
+        let claude = CString::new("claude").unwrap();
         let mut out = out_ptr();
-        let code = obol_estimate_path(p.as_ptr(), std::ptr::null(), &mut out);
+        let code = obol_estimate_path(p.as_ptr(), claude.as_ptr(), &mut out);
         assert_eq!(code, ERR_IO, "code={code}");
         obol_string_free(out);
         std::fs::remove_dir_all(&dir).ok();
