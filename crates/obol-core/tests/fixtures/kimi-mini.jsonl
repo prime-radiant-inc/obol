@@ -1,0 +1,3 @@
+{"type":"usage.record","usageScope":"session","model":"kimi-for-coding","time":1800000000000,"usage":{"inputOther":999,"inputCacheRead":0,"inputCacheCreation":0,"output":999}}
+{"type":"usage.record","usageScope":"turn","model":"kimi-for-coding","time":1800000000001,"usage":{"inputOther":10,"inputCacheRead":20,"inputCacheCreation":30,"output":40}}
+{"type":"usage.record","usageScope":"turn","model":"kimi-for-coding","time":1800000000002,"usage":{"inputOther":1,"inputCacheRead":2,"inputCacheCreation":3,"output":4}}

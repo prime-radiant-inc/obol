@@ -178,6 +178,22 @@ mod api_tests {
     }
 
     #[test]
+    fn kimi_model_surfaces_unpriced_loudly() {
+        std::env::remove_var("OBOL_PRICING_DIR");
+        let est = estimate_cost(
+            Source::Bytes(include_bytes!("../tests/fixtures/kimi-mini.jsonl")),
+            Some(Dialect::Kimi),
+        )
+        .unwrap();
+        assert_eq!(est.total_usd, 0.0, "kimi-for-coding is unpriced -> $0");
+        assert!(
+            est.unpriced_models.contains(&"kimi-for-coding".to_string()),
+            "must name the unpriced model: {:?}",
+            est.unpriced_models
+        );
+    }
+
+    #[test]
     fn refresh_report_serializes() {
         let r = RefreshReport {
             models: 7,
