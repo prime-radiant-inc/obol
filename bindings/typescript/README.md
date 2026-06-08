@@ -29,13 +29,13 @@ The library is resolved in order: `$OBOL_LIB` (explicit path) → the package's 
 ## Usage
 
 ```ts
-import { estimatePath, estimateBytes, refresh, version, ObolError } from "obol";
+import { estimatePath, refresh, version, ObolError } from "obol";
 
-const est = await estimatePath("session.jsonl", "claude"); // dialect optional → auto-detect
+const est = await estimatePath("session.jsonl", "claude");
 console.log(est.total_usd, est.pricing_as_of);
 
 try {
-  await estimateBytes(new Uint8Array(/* … */));
+  await estimatePath("session.jsonl", "gemini");
 } catch (e) {
   if (e instanceof ObolError) console.error(e.code, e.kind, e.message);
 }

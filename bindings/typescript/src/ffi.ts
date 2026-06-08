@@ -6,8 +6,7 @@ export interface RawResult {
 }
 export interface FfiBackend {
   version(): string;
-  estimatePath(path: string, dialect: string | null): RawResult;
-  estimateBytes(data: Uint8Array, dialect: string | null): RawResult;
+  estimatePath(path: string, dialect: string): RawResult;
   refresh(asOf: string): RawResult;
 }
 
