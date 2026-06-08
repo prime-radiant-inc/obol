@@ -1,6 +1,7 @@
 # obol-cli
 
-Command-line tool to estimate the USD cost of an AI-agent transcript (Claude Code, Codex, Pi).
+Command-line tool to estimate the USD cost of an AI-agent transcript (Claude Code, Codex, Pi,
+Gemini, OpenCode, Copilot, Kimi).
 
 ```bash
 cargo install obol-cli      # installs the `obol` binary
