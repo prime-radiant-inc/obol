@@ -32,8 +32,14 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
         };
         let g = |k: &str| tok.get(k).and_then(Value::as_u64).unwrap_or(0);
         let input = g("input");
-        let cache_read = tok.pointer("/cache/read").and_then(Value::as_u64).unwrap_or(0);
-        let cache_write = tok.pointer("/cache/write").and_then(Value::as_u64).unwrap_or(0);
+        let cache_read = tok
+            .pointer("/cache/read")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let cache_write = tok
+            .pointer("/cache/write")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
         let output = g("output") + g("reasoning");
         let model = msg
             .get("modelID")

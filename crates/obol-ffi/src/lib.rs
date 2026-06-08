@@ -115,7 +115,9 @@ fn parse_dialect(dialect: *const c_char) -> Result<Dialect, ()> {
     if dialect.is_null() {
         return Err(());
     }
-    let s = unsafe { CStr::from_ptr(dialect) }.to_str().map_err(|_| ())?;
+    let s = unsafe { CStr::from_ptr(dialect) }
+        .to_str()
+        .map_err(|_| ())?;
     match s {
         "claude" => Ok(Dialect::Claude),
         "codex" => Ok(Dialect::Codex),
@@ -300,7 +302,11 @@ mod tests {
     fn estimate_path_success_with_seeded_store() {
         let dir = seed_pricing();
         let f = dir.join("session.jsonl");
-        std::fs::write(&f, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
+        std::fs::write(
+            &f,
+            include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice(),
+        )
+        .unwrap();
         let cpath = CString::new(f.to_str().unwrap()).unwrap();
         let claude = CString::new("claude").unwrap();
         let mut out = out_ptr();

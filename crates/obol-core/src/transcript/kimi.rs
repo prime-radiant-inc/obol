@@ -80,7 +80,11 @@ mod tests {
     #[test]
     fn prefers_turn_rows_over_session() {
         let u = parse(include_bytes!("../../tests/fixtures/kimi-mini.jsonl")).unwrap();
-        assert_eq!(u.len(), 2, "session row must be ignored when turns exist: {u:?}");
+        assert_eq!(
+            u.len(),
+            2,
+            "session row must be ignored when turns exist: {u:?}"
+        );
         assert_eq!(u[0].model, "kimi-for-coding");
         assert_eq!(u[0].input_uncached, 10);
         assert_eq!(u[0].cache_read, 20);

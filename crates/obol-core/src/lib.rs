@@ -7,7 +7,9 @@ pub mod pricing;
 pub mod transcript;
 
 pub use error::ObolError;
-pub use model::{Approximation, CostEstimate, MessageUsage, ModelCost, PricingSource, Provider, TokenBuckets};
+pub use model::{
+    Approximation, CostEstimate, MessageUsage, ModelCost, PricingSource, Provider, TokenBuckets,
+};
 pub use transcript::Dialect;
 
 use std::path::{Path, PathBuf};
@@ -77,8 +79,15 @@ mod api_tests {
     fn estimate_cost_on_bytes_with_missing_tables_errors() {
         std::env::set_var("OBOL_PRICING_DIR", "/nonexistent/obol-xyz");
         let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
-        std::fs::write(&tmp, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
-        assert!(matches!(estimate_cost(&tmp, Dialect::Claude), Err(ObolError::PricingTablesMissing(_))));
+        std::fs::write(
+            &tmp,
+            include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice(),
+        )
+        .unwrap();
+        assert!(matches!(
+            estimate_cost(&tmp, Dialect::Claude),
+            Err(ObolError::PricingTablesMissing(_))
+        ));
         std::fs::remove_file(&tmp).ok();
         std::env::remove_var("OBOL_PRICING_DIR");
     }
@@ -96,7 +105,11 @@ mod api_tests {
         store.save(&pricing::current_path()).unwrap();
 
         let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
-        std::fs::write(&tmp, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
+        std::fs::write(
+            &tmp,
+            include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice(),
+        )
+        .unwrap();
         let est = estimate_cost(&tmp, Dialect::Claude).unwrap();
         assert!(est.total_usd > 0.0);
         assert_eq!(est.pricing_as_of, "2026-06-04");
@@ -144,7 +157,11 @@ mod api_tests {
         std::env::remove_var("OBOL_PRICING_DIR");
         std::env::set_var("XDG_DATA_HOME", &xdg);
         let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
-        std::fs::write(&tmp, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
+        std::fs::write(
+            &tmp,
+            include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice(),
+        )
+        .unwrap();
         let est = estimate_cost(&tmp, Dialect::Claude).unwrap();
         assert_eq!(est.pricing_source, crate::model::PricingSource::Bundled);
         assert!(est.total_usd > 0.0, "embedded snapshot should price claude");
@@ -164,7 +181,11 @@ mod api_tests {
         .unwrap();
         store.save(&pricing::current_path()).unwrap();
         let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
-        std::fs::write(&tmp, include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice()).unwrap();
+        std::fs::write(
+            &tmp,
+            include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice(),
+        )
+        .unwrap();
         let est = estimate_cost(&tmp, Dialect::Claude).unwrap();
         assert_eq!(est.pricing_source, crate::model::PricingSource::Local);
         std::fs::remove_file(&tmp).ok();
@@ -176,7 +197,11 @@ mod api_tests {
     fn kimi_model_surfaces_unpriced_loudly() {
         std::env::remove_var("OBOL_PRICING_DIR");
         let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
-        std::fs::write(&tmp, include_bytes!("../tests/fixtures/kimi-mini.jsonl").as_slice()).unwrap();
+        std::fs::write(
+            &tmp,
+            include_bytes!("../tests/fixtures/kimi-mini.jsonl").as_slice(),
+        )
+        .unwrap();
         let est = estimate_cost(&tmp, Dialect::Kimi).unwrap();
         assert_eq!(est.total_usd, 0.0, "kimi-for-coding is unpriced -> $0");
         assert!(
