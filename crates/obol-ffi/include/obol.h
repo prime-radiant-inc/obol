@@ -17,14 +17,6 @@ const char *obol_version(void);
 void obol_string_free(char *s);
 
 /*
- Estimate cost from transcript bytes (borrowed). See the ownership contract.
- */
-int32_t obol_estimate_bytes(const uint8_t *data,
-                            uintptr_t len,
-                            const char *dialect,
-                            char **out_json);
-
-/*
  Estimate cost from a transcript file path (borrowed). See the ownership contract.
  */
 int32_t obol_estimate_path(const char *path, const char *dialect, char **out_json);
