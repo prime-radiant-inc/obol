@@ -42,10 +42,8 @@ import "github.com/prime-radiant-inc/obol-go" // or the in-repo package during d
 
 obol.Version() // "0.1.1" (the Rust core version)
 
-est, err := obol.EstimatePath("transcript.jsonl", "claude") // "" dialect auto-detects
+est, err := obol.EstimatePath("transcript.jsonl", "claude")
 // est.TotalUSD, est.PricingAsOf, est.PerModel[i].{Model,Provider,SubtotalUSD}
-
-est, err = obol.EstimateBytes(data, "") // from in-memory bytes, auto-detect
 
 report, err := obol.Refresh("2026-06-05") // refresh the on-disk pricing snapshot (network)
 ```
@@ -55,7 +53,7 @@ On a nonzero status the call returns an `*obol.ObolError` carrying `.Code`, `.Ki
 
 ## Pricing tables must exist
 
-`EstimatePath` / `EstimateBytes` read a pricing snapshot from disk. Either run `obol refresh`
+`EstimatePath` reads a pricing snapshot from disk. Either run `obol refresh`
 (the CLI), or point `OBOL_PRICING_DIR` at a directory containing `current.json`. With no
 snapshot the call returns an `*ObolError` with `Kind == "PricingTablesMissing"` (code 1).
 

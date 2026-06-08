@@ -50,8 +50,7 @@ func TestEstimatePath(t *testing.T) {
 
 func TestMissingTablesIsError(t *testing.T) {
 	setPricingDir(t, "/nonexistent/obol-go-xyz")
-	data, _ := os.ReadFile(filepath.Join(testdata(t), "claude-mini.jsonl"))
-	_, err := EstimateBytes(data, "claude")
+	_, err := EstimatePath(filepath.Join(testdata(t), "claude-mini.jsonl"), "claude")
 	oe, ok := err.(*ObolError)
 	if !ok || oe.Code != 1 {
 		t.Fatalf("expected ObolError code 1, got %v", err)
@@ -60,8 +59,7 @@ func TestMissingTablesIsError(t *testing.T) {
 
 func TestUnknownDialectIsError(t *testing.T) {
 	seed(t)
-	data, _ := os.ReadFile(filepath.Join(testdata(t), "claude-mini.jsonl"))
-	_, err := EstimateBytes(data, "banana")
+	_, err := EstimatePath(filepath.Join(testdata(t), "claude-mini.jsonl"), "banana")
 	oe, ok := err.(*ObolError)
 	if !ok || oe.Code != 7 {
 		t.Fatalf("expected ObolError code 7, got %v", err)

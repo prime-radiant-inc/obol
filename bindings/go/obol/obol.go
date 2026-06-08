@@ -87,33 +87,19 @@ func decodeEstimate(code int32, payload []byte) (*CostEstimate, error) {
 	return &est, nil
 }
 
-// EstimatePath estimates a transcript file's cost. dialect "" means auto-detect.
+// EstimatePath estimates a transcript file's cost. dialect is required.
 func EstimatePath(path, dialect string) (*CostEstimate, error) {
 	if err := ensureLoaded(); err != nil {
 		return nil, err
 	}
+	if dialect == "" {
+		return nil, &ObolError{Code: 7, Kind: "InvalidArgument", Message: "dialect is required"}
+	}
 	p := append([]byte(path), 0)
-	d := dialectBytes(dialect)
+	d := append([]byte(dialect), 0)
 	var out uintptr
-	code := cEstimatePath(&p[0], bytePtr(d), &out)
+	code := cEstimatePath(&p[0], &d[0], &out)
 	runtime.KeepAlive(p)
-	runtime.KeepAlive(d)
-	return decodeEstimate(code, drain(out))
-}
-
-// EstimateBytes estimates in-memory transcript bytes. dialect "" means auto-detect.
-func EstimateBytes(data []byte, dialect string) (*CostEstimate, error) {
-	if err := ensureLoaded(); err != nil {
-		return nil, err
-	}
-	dptr := data
-	if len(dptr) == 0 {
-		dptr = []byte{0} // non-nil pointer for len 0; length below stays 0
-	}
-	d := dialectBytes(dialect)
-	var out uintptr
-	code := cEstimateBytes(&dptr[0], uintptr(len(data)), bytePtr(d), &out)
-	runtime.KeepAlive(dptr)
 	runtime.KeepAlive(d)
 	return decodeEstimate(code, drain(out))
 }
