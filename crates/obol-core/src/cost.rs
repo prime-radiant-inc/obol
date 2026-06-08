@@ -1,6 +1,6 @@
 //! Price a Vec<MessageUsage> against a PriceStore into a CostEstimate.
 
-use crate::model::{Approximation, CostEstimate, MessageUsage, ModelCost, Provider, TokenBuckets};
+use crate::model::{Approximation, CostEstimate, MessageUsage, ModelCost, PricingSource, Provider, TokenBuckets};
 use crate::pricing::{cost_for, PriceStore};
 use std::collections::BTreeMap;
 
@@ -69,6 +69,7 @@ pub fn estimate(usages: &[MessageUsage], store: &PriceStore) -> CostEstimate {
         unpriced_models: unpriced,
         approximations,
         pricing_as_of: store.as_of.clone(),
+        pricing_source: PricingSource::Bundled, // real value threaded in Task 3
     }
 }
 
