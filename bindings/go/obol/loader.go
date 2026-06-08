@@ -20,11 +20,10 @@ var (
 	loadOnce sync.Once
 	loadErr  error
 
-	cVersion       func() uintptr
-	cEstimatePath  func(path *byte, dialect *byte, out *uintptr) int32
-	cEstimateBytes func(data *byte, n uintptr, dialect *byte, out *uintptr) int32
-	cRefresh       func(asOf *byte, out *uintptr) int32
-	cStringFree    func(p uintptr)
+	cVersion      func() uintptr
+	cEstimatePath func(path *byte, dialect *byte, out *uintptr) int32
+	cRefresh      func(asOf *byte, out *uintptr) int32
+	cStringFree   func(p uintptr)
 )
 
 // ensureLoaded resolves, dlopens, and binds the native library exactly once.
@@ -37,7 +36,6 @@ func ensureLoaded() error {
 		}
 		purego.RegisterLibFunc(&cVersion, h, "obol_version")
 		purego.RegisterLibFunc(&cEstimatePath, h, "obol_estimate_path")
-		purego.RegisterLibFunc(&cEstimateBytes, h, "obol_estimate_bytes")
 		purego.RegisterLibFunc(&cRefresh, h, "obol_refresh_pricing")
 		purego.RegisterLibFunc(&cStringFree, h, "obol_string_free")
 	})
@@ -170,18 +168,3 @@ func cstr(p uintptr) string {
 	return string(unsafe.Slice((*byte)(unsafe.Pointer(p)), n))
 }
 
-// bytePtr returns &b[0] or nil for an empty slice (→ C NULL).
-func bytePtr(b []byte) *byte {
-	if len(b) == 0 {
-		return nil
-	}
-	return &b[0]
-}
-
-// dialectBytes returns a NUL-terminated copy, or nil for "" (auto-detect → C NULL).
-func dialectBytes(d string) []byte {
-	if d == "" {
-		return nil
-	}
-	return append([]byte(d), 0)
-}

@@ -9,15 +9,11 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: total <transcript> [dialect]")
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "usage: total <transcript> <dialect>")
 		os.Exit(2)
 	}
-	dialect := ""
-	if len(os.Args) >= 3 {
-		dialect = os.Args[2]
-	}
-	est, err := obol.EstimatePath(os.Args[1], dialect)
+	est, err := obol.EstimatePath(os.Args[1], os.Args[2])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
