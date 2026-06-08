@@ -1,5 +1,21 @@
 # Releasing
 
+**One tag releases everything.** A single `vX.Y.Z` tag on `main` drives all four channels —
+npm + Go (`release.yml`), crates.io (`crates-release.yml`), and PyPI (`pypi-release.yml`) all
+trigger on `v*`. So a release is:
+
+```bash
+# bump [workspace.package] version + [workspace.dependencies] obol-core + the two binding
+# version tests (bindings/python/tests/test_obol.py, bindings/typescript/test/obol.test.ts),
+# commit, merge, then:
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+Every publish step is **idempotent**: a re-fired tag (e.g. to fix one channel) skips the
+channels already published at that version instead of failing the run. crates.io is skipped on
+prerelease tags (`vX.Y.Z-rc.N`) since `Cargo.toml` carries the release version; npm routes
+prereleases to the `next` dist-tag and PyPI accepts them as `rcN`.
+
 ## npm — `@primeradianthq/obol` (the TypeScript binding)
 
 Publishing is **tag-driven**. Push a tag `vX.Y.Z` on `main` and `.github/workflows/release.yml`:
@@ -64,10 +80,11 @@ files + `go.mod`/`go.sum`), smoke-tests it, then commits and tags `obol-go`.
 
 ## crates.io — `obol-core` + `obol-cli`
 
-Decoupled from the npm/Go `v*` tags: crates take their version from `Cargo.toml`, so they publish on
-their own **`crates-v*`** tag namespace via `.github/workflows/crates-release.yml`. A guard asserts
-`crates-vX.Y.Z` matches the workspace version; the workflow publishes `obol-core` then `obol-cli`
-(cargo ≥1.66 waits for the index between them). `obol-ffi` is not published.
+Triggered by the same `v*` tag via `.github/workflows/crates-release.yml`. crates take their version
+from `Cargo.toml`, so a guard asserts the `vX.Y.Z` tag matches the workspace version; the workflow
+publishes `obol-core` then `obol-cli` (cargo ≥1.66 waits for the index between them), skipping any
+version already on crates.io (versions are immutable). Prerelease tags are skipped. `obol-ffi` is not
+published.
 
 **Bootstrap (one-time, token).** crates.io Trusted Publishing requires the crate to exist first.
 1. Create a crates.io API token (scopes `publish-new` + `publish-update`); add it as the repo secret
@@ -82,15 +99,15 @@ their own **`crates-v*`** tag namespace via `.github/workflows/crates-release.ym
 `rust-lang/crates-io-auth-action@v1` (needs `permissions: id-token: write`). To release: bump
 `[workspace.package] version` **and** `[workspace.dependencies] obol-core` version together, update
 the two binding version tests (`bindings/python/tests/test_obol.py`,
-`bindings/typescript/test/obol.test.ts`), commit, then push `crates-vX.Y.Z`.
+`bindings/typescript/test/obol.test.ts`), commit, then push `vX.Y.Z`.
 
 ## PyPI — `primeradianthq-obol` (import `obol`)
 
-Decoupled `pypi-v*` tag namespace (version from the tag, like crates). `pypi-vX.Y.Z` →
-`.github/workflows/pypi-release.yml` builds four wheels — macOS arm64/x64 on the runners, Linux
-x64/arm64 in `manylinux_2_28` containers (`scripts/build-pypi-wheel-linux.sh` + `auditwheel repair`)
-— each bundling that platform's prebuilt `libobol_ffi`, then publishes via **tokenless OIDC**
-(`pypa/gh-action-pypi-publish`).
+Triggered by the same `v*` tag (version stamped from the tag). `.github/workflows/pypi-release.yml`
+builds four wheels — macOS arm64/x64 on the runners, Linux x64/arm64 in `manylinux_2_28` containers
+(`scripts/build-pypi-wheel-linux.sh` + `auditwheel repair`) — each bundling that platform's prebuilt
+`libobol_ffi`, then publishes via **tokenless OIDC** (`pypa/gh-action-pypi-publish` with
+`skip-existing: true`, so a re-fired tag skips already-published wheels).
 
 - **Trusted Publishing (pending publisher, no token ever).** Configured once on PyPI: project
   `primeradianthq-obol`, owner `prime-radiant-inc`, repo `obol`, workflow `pypi-release.yml`, **no
@@ -100,4 +117,4 @@ x64/arm64 in `manylinux_2_28` containers (`scripts/build-pypi-wheel-linux.sh` + 
   distribution name `primeradianthq-obol` differs because bare `obol` is a taken PyPI name.
 - The wheel is abi-agnostic (`py3-none-<plat>`): a `setup.py` forces an impure, platform-tagged
   wheel (`OBOL_WHEEL_PLAT` per macOS arch; `auditwheel` sets the manylinux tag on Linux).
-- To release: push `pypi-vX.Y.Z` (the version is stamped from the tag into `pyproject.toml`).
+- To release: push `vX.Y.Z` (the version is stamped from the tag into `pyproject.toml`).
