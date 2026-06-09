@@ -33,7 +33,7 @@ jobs:
         run: |
           LIB="target/release/libobol_ffi.${{ matrix.ext }}"
           if [ "$RUNNER_OS" = "macOS" ]; then strip -x "$LIB"; else strip "$LIB"; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dylib-${{ matrix.name }}
           path: target/release/libobol_ffi.${{ matrix.ext }}
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
       - name: Pin npm (trusted publishing + provenance need >= 11.5.1)
@@ -52,7 +52,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.11"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: /tmp/dylibs
       - name: Assemble native/
@@ -96,7 +96,7 @@ jobs:
           cp /tmp/dylibs/dylib-linux-x64/libobol_ffi.so       /tmp/assets/libobol_ffi-linux-x64.so
           cp /tmp/dylibs/dylib-linux-arm64/libobol_ffi.so     /tmp/assets/libobol_ffi-linux-arm64.so
       - name: GitHub Release with dylibs
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: /tmp/assets/libobol_ffi-*
           fail_on_unmatched_files: true
@@ -106,11 +106,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6 # monorepo: source + assemble script
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.23"
           cache: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: /tmp/dylibs # → /tmp/dylibs/dylib-<plat>-<arch>/libobol_ffi.*
       - name: Check out obol-go

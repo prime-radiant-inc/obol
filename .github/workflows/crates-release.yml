@@ -38,7 +38,7 @@ jobs:
           echo "publishing version $got"
       - name: Mint a short-lived crates.io token via OIDC (Trusted Publishing)
         if: steps.pre.outputs.skip != 'true'
-        uses: rust-lang/crates-io-auth-action@v1
+        uses: rust-lang/crates-io-auth-action@v1.0.4
         id: auth
       - name: Publish obol-core then obol-cli (idempotent)
         if: steps.pre.outputs.skip != 'true'
