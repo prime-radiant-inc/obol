@@ -15,7 +15,7 @@ enum Cmd {
     /// Estimate the cost of a transcript file.
     Estimate {
         path: PathBuf,
-        #[arg(long, value_parser = ["claude", "codex", "pi", "gemini", "opencode", "copilot", "kimi"])]
+        #[arg(long, value_parser = ["claude", "codex", "pi", "gemini", "opencode", "copilot", "kimi", "obol"])]
         dialect: Option<String>,
         #[arg(long)]
         json: bool,
@@ -45,6 +45,7 @@ fn run() -> Result<(), String> {
                     "opencode" => Dialect::Opencode,
                     "copilot" => Dialect::Copilot,
                     "kimi" => Dialect::Kimi,
+                    "obol" => Dialect::Obol,
                     other => unreachable!("clap value_parser restricts dialect; got {other:?}"),
                 },
                 None => {
