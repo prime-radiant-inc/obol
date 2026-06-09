@@ -61,22 +61,10 @@ pub fn parse(bytes: &[u8]) -> Result<ClaudeParse, ObolError> {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
-        let g = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
-        let input = g("input_tokens");
-        let cache_read = g("cache_read_input_tokens");
-        let cache_creation = g("cache_creation_input_tokens");
-        let (cw5, cw1) = match usage.get("cache_creation") {
-            Some(cc) if cc.is_object() => (
-                cc.get("ephemeral_5m_input_tokens")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0),
-                cc.get("ephemeral_1h_input_tokens")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0),
-            ),
-            _ => (cache_creation, 0), // no split -> treat all creation as 5m
-        };
-
+        // Token math lives in the shared Anthropic normalizer (Claude Code
+        // embeds the Anthropic usage object near-verbatim). The envelope
+        // navigation + streaming dedup below is this dialect's own job.
+        let t = super::provider::anthropic::normalize(usage);
         let mu = MessageUsage {
             model: msg
                 .get("model")
@@ -85,12 +73,15 @@ pub fn parse(bytes: &[u8]) -> Result<ClaudeParse, ObolError> {
                 .to_string(),
             provider: Provider::Anthropic,
             namespace: "litellm".into(),
-            input_uncached: input,
-            cache_read,
-            cache_write_5m: cw5,
-            cache_write_1h: cw1,
-            output: g("output_tokens"),
-            request_input_tokens: input + cache_read + cache_creation,
+            input_uncached: t.input_uncached,
+            cache_read: t.cache_read,
+            cache_write_5m: t.cache_write_5m,
+            cache_write_1h: t.cache_write_1h,
+            output: t.output,
+            request_input_tokens: t.input_uncached
+                + t.cache_read
+                + t.cache_write_5m
+                + t.cache_write_1h,
             service_tier: usage
                 .get("service_tier")
                 .and_then(Value::as_str)

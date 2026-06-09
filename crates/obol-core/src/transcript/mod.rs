@@ -3,8 +3,10 @@ pub mod codex;
 pub mod copilot;
 pub mod gemini;
 pub mod kimi;
+pub mod obol;
 pub mod opencode;
 pub mod pi;
+pub mod provider;
 
 use crate::error::ObolError;
 use crate::model::MessageUsage;
@@ -17,6 +19,7 @@ pub enum Dialect {
     Copilot,
     Gemini,
     Kimi,
+    Obol,
     Opencode,
     Pi,
 }
@@ -46,6 +49,9 @@ pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
         }
         if v.get("type").and_then(Value::as_str) == Some("usage.record") {
             return Ok(Dialect::Kimi);
+        }
+        if v.get("type").and_then(Value::as_str) == Some("obol.usage") {
+            return Ok(Dialect::Obol);
         }
         if v.get("type").and_then(Value::as_str) == Some("session") {
             return Ok(Dialect::Pi);
@@ -77,6 +83,7 @@ pub fn parse(bytes: &[u8], dialect: Dialect) -> Result<Vec<MessageUsage>, ObolEr
         Dialect::Copilot => copilot::parse(bytes),
         Dialect::Gemini => gemini::parse(bytes),
         Dialect::Kimi => kimi::parse(bytes),
+        Dialect::Obol => obol::parse(bytes),
         Dialect::Opencode => opencode::parse(bytes),
         Dialect::Pi => pi::parse(bytes),
     }
@@ -98,6 +105,12 @@ mod tests {
     fn detects_pi() {
         let pi = include_bytes!("../../tests/fixtures/pi-mini.jsonl");
         assert_eq!(detect(pi).unwrap(), Dialect::Pi);
+    }
+
+    #[test]
+    fn detects_obol() {
+        let obol = include_bytes!("../../tests/fixtures/obol-usage-mini.jsonl");
+        assert_eq!(detect(obol).unwrap(), Dialect::Obol);
     }
 
     #[test]
