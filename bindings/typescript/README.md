@@ -46,6 +46,22 @@ The API is async because the FFI backend is loaded lazily (and cached) on first 
 Pricing tables must exist before estimating — run `obol refresh` (the CLI) or point
 `OBOL_PRICING_DIR` at a directory containing a `current.json` snapshot.
 
+### Pinning the pricing dir at runtime
+
+To set `OBOL_PRICING_DIR` *after* the process has started, use the exported helpers rather than
+writing `process.env` directly — under **Bun**, a runtime `process.env` write does not reach the
+native environment the FFI (and Rust's `getenv`) observes, so the value is silently ignored. The
+helpers call libc `setenv`/`unsetenv` under Bun (and set `process.env` for Node), so they work on
+both runtimes:
+
+```ts
+import { setPricingDir, clearPricingDir } from "obol";
+
+await setPricingDir("/path/to/pricing-dir"); // a dir containing current.json
+// … estimatePath(...) …
+await clearPricingDir();
+```
+
 ## Ownership
 
 You never touch raw pointers. Each call copies obol's returned string into a JS string and then
