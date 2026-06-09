@@ -126,6 +126,7 @@ fn parse_dialect(dialect: *const c_char) -> Result<Dialect, ()> {
         "opencode" => Ok(Dialect::Opencode),
         "copilot" => Ok(Dialect::Copilot),
         "kimi" => Ok(Dialect::Kimi),
+        "obol" => Ok(Dialect::Obol),
         _ => Err(()),
     }
 }
@@ -311,6 +312,28 @@ mod tests {
         let claude = CString::new("claude").unwrap();
         let mut out = out_ptr();
         let code = obol_estimate_path(cpath.as_ptr(), claude.as_ptr(), &mut out);
+        assert_eq!(code, OK, "code={code}");
+        let json = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
+        obol_string_free(out);
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v["total_usd"].as_f64().unwrap() > 0.0, "{json}");
+        std::fs::remove_dir_all(&dir).ok();
+        std::env::remove_var("OBOL_PRICING_DIR");
+    }
+
+    #[test]
+    fn estimate_path_success_with_obol_dialect() {
+        let dir = seed_pricing();
+        let f = dir.join("usage.jsonl");
+        std::fs::write(
+            &f,
+            include_bytes!("../../obol-core/tests/fixtures/obol-usage-mini.jsonl").as_slice(),
+        )
+        .unwrap();
+        let cpath = CString::new(f.to_str().unwrap()).unwrap();
+        let obol = CString::new("obol").unwrap();
+        let mut out = out_ptr();
+        let code = obol_estimate_path(cpath.as_ptr(), obol.as_ptr(), &mut out);
         assert_eq!(code, OK, "code={code}");
         let json = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
         obol_string_free(out);
