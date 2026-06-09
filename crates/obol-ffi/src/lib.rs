@@ -57,6 +57,7 @@ fn code_and_kind(e: &ObolError) -> (i32, &'static str) {
         ObolError::PricingTablesMissing(_) => (ERR_PRICING_MISSING, "PricingTablesMissing"),
         ObolError::UnknownDialect => (ERR_UNKNOWN_DIALECT, "UnknownDialect"),
         ObolError::MalformedTranscript { .. } => (ERR_MALFORMED, "MalformedTranscript"),
+        ObolError::InvalidAsOf(_) => (ERR_INVALID_ARG, "InvalidArgument"),
         ObolError::Network(_) => (ERR_NETWORK, "Network"),
         ObolError::Io(_) => (ERR_IO, "Io"),
         ObolError::Json(_) => (ERR_JSON, "Json"),
@@ -376,6 +377,18 @@ mod tests {
         let code = obol_refresh_pricing(std::ptr::null(), &mut out);
         assert_eq!(code, ERR_INVALID_ARG);
         obol_string_free(out);
+    }
+
+    #[test]
+    fn refresh_garbage_as_of_is_invalid_arg() {
+        let as_of = CString::new("Apr-2027").unwrap();
+        let mut out = out_ptr();
+        let code = obol_refresh_pricing(as_of.as_ptr(), &mut out);
+        assert_eq!(code, ERR_INVALID_ARG, "code={code}");
+        let json = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
+        obol_string_free(out);
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["error"]["kind"], "InvalidArgument", "{json}");
     }
 
     #[test]

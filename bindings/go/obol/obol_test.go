@@ -57,6 +57,15 @@ func TestMissingTablesIsError(t *testing.T) {
 	}
 }
 
+func TestRefreshRejectsGarbageAsOf(t *testing.T) {
+	seed(t)
+	_, err := Refresh("Apr-2027")
+	oe, ok := err.(*ObolError)
+	if !ok || oe.Code != 7 || oe.Kind != "InvalidArgument" {
+		t.Fatalf("expected ObolError code 7 InvalidArgument, got %v", err)
+	}
+}
+
 func TestUnknownDialectIsError(t *testing.T) {
 	seed(t)
 	_, err := EstimatePath(filepath.Join(testdata(t), "claude-mini.jsonl"), "banana")

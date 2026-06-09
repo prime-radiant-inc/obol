@@ -1,5 +1,6 @@
 //! Price tables and the per-message cost kernel.
 
+pub mod as_of;
 pub mod refresh;
 pub mod store;
 pub use store::{current_path, embedded, pricing_dir, PriceStore};

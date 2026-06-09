@@ -20,7 +20,7 @@ async function seed(): Promise<string> {
 }
 
 test("version", async () => {
-  assert.equal(await obol.version(), "0.3.0");
+  assert.equal(await obol.version(), "0.4.0");
 });
 
 test("estimatePath success", async () => {
@@ -43,6 +43,19 @@ test("missing tables -> ObolError code 1", async () => {
       (e: unknown) => e instanceof obol.ObolError && e.code === 1 && e.kind === "PricingTablesMissing",
     );
   } finally {
+    await clearPricingDir();
+  }
+});
+
+test("refresh rejects garbage as_of -> ObolError code 7", async () => {
+  const dir = await seed();
+  try {
+    await assert.rejects(
+      () => obol.refresh("Apr-2027"),
+      (e: unknown) => e instanceof obol.ObolError && e.code === 7 && e.kind === "InvalidArgument",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
     await clearPricingDir();
   }
 });
