@@ -61,7 +61,9 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
             cache_read: cached,
             cache_write_5m: 0,
             cache_write_1h: 0,
-            output: g("output_tokens"),
+            // Reasoning is billed as output and reported separately from output_tokens; fold it
+            // in (consistent with the gemini/opencode/copilot/kimi dialects). PRI-2124.
+            output: g("output_tokens") + g("reasoning_output_tokens"),
             request_input_tokens: input,
             service_tier: None,
         });
@@ -81,8 +83,9 @@ mod tests {
         assert_eq!(u[0].model, "gpt-5.5");
         assert_eq!(u[0].input_uncached, 200); // 1000 - 800
         assert_eq!(u[0].cache_read, 800);
-        assert_eq!(u[0].output, 50);
+        assert_eq!(u[0].output, 60); // 50 output_tokens + 10 reasoning_output_tokens
         assert_eq!(u[1].input_uncached, 100); // 2000 - 1900
         assert_eq!(u[1].cache_read, 1900);
+        assert_eq!(u[1].output, 80); // 80 output_tokens + 0 reasoning_output_tokens
     }
 }
