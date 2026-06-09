@@ -31,10 +31,13 @@ fn resolve_store() -> Result<(pricing::PriceStore, PricingSource), ObolError> {
         return Ok((store, PricingSource::Local));
     }
     let embedded = pricing::embedded()?;
+    let embedded_key = pricing::as_of::sort_key(&embedded.as_of)?;
     let local_path = pricing::current_path();
     if local_path.exists() {
         if let Ok(local) = pricing::PriceStore::load(&local_path) {
-            if local.as_of >= embedded.as_of {
+            // Compare parsed stamps, never raw strings; a local snapshot with an
+            // unparseable as_of (pre-validation era) loses to the embedded floor.
+            if pricing::as_of::sort_key(&local.as_of).is_ok_and(|k| k >= embedded_key) {
                 return Ok((local, PricingSource::Local));
             }
         }
@@ -52,8 +55,10 @@ pub fn estimate_cost(path: &Path, dialect: Dialect) -> Result<CostEstimate, Obol
 }
 
 /// Fetch the LiteLLM sheet and write it as the active snapshot. `as_of` is the
-/// caller's date string (the library has no clock).
+/// caller's stamp — `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SSZ` (the library has no
+/// clock) — validated before any network or disk I/O.
 pub fn refresh_pricing_tables(as_of: &str) -> Result<RefreshReport, ObolError> {
+    pricing::as_of::validate(as_of)?;
     let mut store = pricing::refresh::fetch_litellm(as_of)?; // {litellm: …}
     let openrouter = pricing::refresh::fetch_openrouter()?;
     store
@@ -61,7 +66,7 @@ pub fn refresh_pricing_tables(as_of: &str) -> Result<RefreshReport, ObolError> {
         .insert("openrouter".to_string(), openrouter);
     let models: usize = store.namespaces.values().map(|m| m.len()).sum();
     let dir = pricing::pricing_dir();
-    store.save(&dir.join(format!("prices-{as_of}.json")))?;
+    store.save(&dir.join(pricing::as_of::archive_file_name(as_of)))?;
     let current = pricing::current_path();
     store.save(&current)?;
     Ok(RefreshReport {
@@ -210,6 +215,82 @@ mod api_tests {
             est.unpriced_models
         );
         std::fs::remove_file(&tmp).ok();
+    }
+
+    #[test]
+    fn local_snapshot_with_invalid_as_of_loses_to_embedded() {
+        // "junk-zzzz" sorts lexicographically above any ISO date, which is exactly
+        // the bug: precedence must be decided by parsed stamps, not raw strings.
+        let xdg = std::env::temp_dir().join(format!("obol-xdg-junk-{}", std::process::id()));
+        std::fs::create_dir_all(&xdg).unwrap();
+        std::env::remove_var("OBOL_PRICING_DIR");
+        std::env::set_var("XDG_DATA_HOME", &xdg);
+        let store = pricing::refresh::normalize_litellm(
+            include_bytes!("../tests/fixtures/litellm-sample.json"),
+            "junk-zzzz",
+        )
+        .unwrap();
+        std::fs::create_dir_all(pricing::pricing_dir()).unwrap();
+        store.save(&pricing::current_path()).unwrap();
+        let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
+        std::fs::write(
+            &tmp,
+            include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice(),
+        )
+        .unwrap();
+        let est = estimate_cost(&tmp, Dialect::Claude).unwrap();
+        assert_eq!(
+            est.pricing_source,
+            crate::model::PricingSource::Bundled,
+            "a junk-stamped local snapshot must not beat the embedded floor"
+        );
+        std::fs::remove_file(&tmp).ok();
+        std::env::remove_var("XDG_DATA_HOME");
+        std::fs::remove_dir_all(&xdg).ok();
+    }
+
+    #[test]
+    fn local_datetime_stamp_beats_embedded_date() {
+        let xdg = std::env::temp_dir().join(format!("obol-xdg-dt-{}", std::process::id()));
+        std::fs::create_dir_all(&xdg).unwrap();
+        std::env::remove_var("OBOL_PRICING_DIR");
+        std::env::set_var("XDG_DATA_HOME", &xdg);
+        let store = pricing::refresh::normalize_litellm(
+            include_bytes!("../tests/fixtures/litellm-sample.json"),
+            "2099-01-01T08:30:00Z",
+        )
+        .unwrap();
+        std::fs::create_dir_all(pricing::pricing_dir()).unwrap();
+        store.save(&pricing::current_path()).unwrap();
+        let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
+        std::fs::write(
+            &tmp,
+            include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice(),
+        )
+        .unwrap();
+        let est = estimate_cost(&tmp, Dialect::Claude).unwrap();
+        assert_eq!(est.pricing_source, crate::model::PricingSource::Local);
+        std::fs::remove_file(&tmp).ok();
+        std::env::remove_var("XDG_DATA_HOME");
+        std::fs::remove_dir_all(&xdg).ok();
+    }
+
+    #[test]
+    fn refresh_rejects_invalid_as_of_before_any_network_or_disk_io() {
+        let xdg = std::env::temp_dir().join(format!("obol-xdg-rej-{}", std::process::id()));
+        std::fs::create_dir_all(&xdg).unwrap();
+        std::env::remove_var("OBOL_PRICING_DIR");
+        std::env::set_var("XDG_DATA_HOME", &xdg);
+        assert!(matches!(
+            refresh_pricing_tables("Apr-2027"),
+            Err(ObolError::InvalidAsOf(_))
+        ));
+        assert!(
+            !pricing::current_path().exists(),
+            "rejected refresh must not write a snapshot"
+        );
+        std::env::remove_var("XDG_DATA_HOME");
+        std::fs::remove_dir_all(&xdg).ok();
     }
 
     #[test]

@@ -6,6 +6,8 @@ pub enum ObolError {
     PricingTablesMissing(PathBuf),
     #[error("could not determine transcript dialect")]
     UnknownDialect,
+    #[error("invalid as_of {0:?} — expected YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ (UTC)")]
+    InvalidAsOf(String),
     #[error("malformed transcript at line {line}: {msg}")]
     MalformedTranscript { line: usize, msg: String },
     #[error("network error during refresh: {0}")]
