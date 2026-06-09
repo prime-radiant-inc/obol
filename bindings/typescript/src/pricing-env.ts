@@ -1,7 +1,14 @@
-// Cross-runtime control of OBOL_PRICING_DIR for tests.
+// Cross-runtime control of OBOL_PRICING_DIR at runtime.
 // Bun does NOT sync runtime `process.env` writes to the native env that bun:ffi's C calls (and
 // Rust's getenv) observe, so under Bun we must call libc setenv/unsetenv. Node propagates
 // process.env to getenv natively, so there process.env alone is enough.
+
+// Minimal ambient decls: the package's tsconfig uses `types: []` (no @types/node, no bun-types) so
+// the DTS build can't see these runtime globals. Declaring them locally keeps this statically-
+// exported module type-clean without pulling whole type packages into the build.
+declare const process: { env: Record<string, string | undefined>; platform: string };
+declare const Buffer: { from(data: string): Uint8Array };
+
 const KEY = "OBOL_PRICING_DIR";
 const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 
@@ -12,6 +19,7 @@ interface LibcEnv {
 let libc: LibcEnv | undefined;
 async function nativeEnv(): Promise<LibcEnv> {
   if (libc) return libc;
+  // @ts-expect-error bun:ffi is a Bun builtin resolved at runtime (only reached when isBun).
   const { dlopen, FFIType } = await import("bun:ffi");
   const name = process.platform === "darwin" ? "libSystem.dylib" : "libc.so.6";
   const { symbols } = dlopen(name, {

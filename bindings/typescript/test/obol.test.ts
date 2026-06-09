@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as obol from "../src/index.ts";
-import { setPricingDir, clearPricingDir } from "./pricing-env.ts";
+// Imported from the public surface so the test also proves the export ships.
+import { setPricingDir, clearPricingDir } from "../src/index.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TESTDATA = join(HERE, "..", "..", "testdata"); // test -> typescript -> bindings, then /testdata
@@ -19,7 +20,7 @@ async function seed(): Promise<string> {
 }
 
 test("version", async () => {
-  assert.equal(await obol.version(), "0.2.1");
+  assert.equal(await obol.version(), "0.2.2");
 });
 
 test("estimatePath success", async () => {

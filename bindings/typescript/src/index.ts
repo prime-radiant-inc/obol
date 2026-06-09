@@ -36,3 +36,6 @@ export async function refresh(asOf: string): Promise<RefreshReport> {
 
 export { ObolError } from "./types.ts";
 export type { CostEstimate, ModelCost, TokenBuckets, Approximation, RefreshReport, Dialect } from "./types.ts";
+// Pin OBOL_PRICING_DIR at runtime. Under Bun a plain `process.env` write does not reach the
+// native env the FFI reads, so these call libc setenv/unsetenv (and set process.env for Node).
+export { setPricingDir, clearPricingDir } from "./pricing-env.ts";
