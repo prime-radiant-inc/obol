@@ -191,8 +191,9 @@ mod tests {
     #[test]
     fn anthropic_buckets_match_the_claude_dialect() {
         let usage = r#"{"input_tokens":12,"cache_read_input_tokens":120,"cache_creation_input_tokens":60,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":10},"output_tokens":9}"#;
-        let claude_line =
-            format!(r#"{{"type":"assistant","message":{{"id":"m1","model":"m","usage":{usage}}}}}"#);
+        let claude_line = format!(
+            r#"{{"type":"assistant","message":{{"id":"m1","model":"m","usage":{usage}}}}}"#
+        );
         let obol_line = format!(
             r#"{{"type":"obol.usage","v":"2026-06-08","provider":"anthropic","model":"m","usage":{usage}}}"#
         );
