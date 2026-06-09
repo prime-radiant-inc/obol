@@ -49,9 +49,10 @@ A pricing snapshot is bundled into the binary, so `estimate` works out of the bo
 obol estimate ~/.claude/projects/<…>/<session>.jsonl
 obol estimate rollout-….jsonl --dialect codex --json
 
-# Optionally pull fresher prices (LiteLLM + OpenRouter).
-# You supply the date stamp — the library has no clock.
-obol refresh --as-of 2026-06-09
+# Optionally pull fresher prices (LiteLLM + OpenRouter). --as-of defaults to
+# the current UTC datetime; pass it explicitly to pin a stamp.
+obol refresh
+obol refresh --as-of 2026-06-09                  # or 2026-06-09T18:30:00Z
 ```
 
 Default output is a human total + per-model breakdown. `--json` emits the full
@@ -67,7 +68,10 @@ the newer (by `as_of`) of the refreshed on-disk snapshot (`$XDG_DATA_HOME/obol`,
 
 Every binding exposes the same surface: `estimate_path(path, dialect)` — dialect is
 **required** at the API level (auto-detection is a CLI convenience) — plus
-`refresh(as_of)` and `version()`. TypeScript additionally exports
+`refresh(as_of)` and `version()`. `as_of` must be `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SSZ`
+(UTC); the time form lets you stamp multiple refreshes per day. The library has no clock —
+the caller supplies the stamp, and anything malformed is rejected before any network or
+disk I/O. TypeScript additionally exports
 `setPricingDir`/`clearPricingDir` for hermetic pricing in tests.
 
 **If you embed obol, own the refresh story.** The bundled snapshot is frozen at package
