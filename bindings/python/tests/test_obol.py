@@ -21,7 +21,7 @@ def seeded(monkeypatch):
 
 def test_version():
     import obol
-    assert obol.version() == "0.3.0"
+    assert obol.version() == "0.4.0"
 
 
 def test_estimate_path_matches_expectations(seeded):
@@ -39,6 +39,14 @@ def test_missing_tables_raises(monkeypatch):
         obol.estimate_path(TESTDATA / "claude-mini.jsonl", dialect="claude")
     assert ei.value.code == 1
     assert ei.value.kind == "PricingTablesMissing"
+
+
+def test_refresh_rejects_garbage_as_of(seeded):
+    import obol
+    with pytest.raises(obol.ObolError) as ei:
+        obol.refresh("Apr-2027")
+    assert ei.value.code == 7
+    assert ei.value.kind == "InvalidArgument"
 
 
 def test_unknown_dialect_raises(seeded):
