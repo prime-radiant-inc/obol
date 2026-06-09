@@ -14,7 +14,7 @@ jobs:
           - { os: macos-15-intel, plat: macosx_10_12_x86_64, target: "10.12" }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: jdx/mise-action@v4
       - name: Build wheel
         env:
@@ -46,7 +46,7 @@ jobs:
           - { os: ubuntu-24.04-arm, arch: aarch64 }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build manylinux wheel
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
