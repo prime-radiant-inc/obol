@@ -86,6 +86,7 @@ pub fn parse(bytes: &[u8]) -> Result<ClaudeParse, ObolError> {
                 .get("service_tier")
                 .and_then(Value::as_str)
                 .map(String::from),
+            native_cost_usd: None,
         };
 
         let key = if id.is_empty() {

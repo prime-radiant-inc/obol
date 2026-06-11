@@ -93,6 +93,10 @@ pub struct MessageUsage {
     pub output: u64,
     pub request_input_tokens: u64, // full billed input for THIS call, for tier selection
     pub service_tier: Option<String>,
+    /// Provider-reported all-in cost for this call, in USD, when the transcript
+    /// carries one (e.g. Pi's `usage.cost.total`). `Some` is ground truth and is
+    /// preferred over list-price math; `None` means price from the tables.
+    pub native_cost_usd: Option<f64>,
 }
 
 #[cfg(test)]

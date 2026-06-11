@@ -70,6 +70,7 @@ mod tests {
             output: out,
             request_input_tokens: req_in,
             service_tier: Some("standard".into()),
+            native_cost_usd: None,
         }
     }
 

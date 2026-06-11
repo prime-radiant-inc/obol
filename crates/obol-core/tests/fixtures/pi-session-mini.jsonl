@@ -1,0 +1,9 @@
+{"type":"session","version":3,"id":"abc","cwd":"/work/src"}
+{"type":"model_change","modelId":"gpt-5.5"}
+{"type":"thinking_level_change","level":"off"}
+{"type":"message","message":{"role":"user","content":"hello"}}
+{"type":"message","message":{"role":"assistant","model":"gpt-5.5","provider":"openai-codex","usage":{"input":6197,"output":972,"cacheRead":64512,"cacheWrite":0,"totalTokens":71681,"cost":{"input":0.031,"output":0.0146,"cacheRead":0.0081,"cacheWrite":0,"total":0.0537}}}}
+{"type":"message","message":{"role":"assistant","model":"tencent/hy3-preview","provider":"openrouter","usage":{"input":6412,"output":574,"cacheRead":5760,"cacheWrite":0,"totalTokens":12746,"cost":{"total":0.0007}}}}
+{"type":"model_change","modelId":"claude-opus-4-5"}
+{"type":"message","message":{"role":"assistant","provider":"anthropic","usage":{"input":100,"output":20,"cacheRead":0,"cacheWrite":0,"totalTokens":120}}}
+{"type":"message","message":{"role":"assistant","model":"x","provider":"openai","usage":{}}}

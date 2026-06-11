@@ -121,6 +121,7 @@ mod tests {
 
     #[test]
     fn pricing_dir_honors_env_override() {
+        let _env = crate::test_env::env_lock();
         std::env::set_var("OBOL_PRICING_DIR", "/tmp/obol-x");
         assert_eq!(pricing_dir(), PathBuf::from("/tmp/obol-x"));
         std::env::remove_var("OBOL_PRICING_DIR");

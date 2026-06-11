@@ -64,6 +64,7 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<MessageUsage>, ObolError> {
             output,
             request_input_tokens: input + cached,
             service_tier: None,
+            native_cost_usd: None,
         });
     }
     Ok(out)

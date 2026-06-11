@@ -23,21 +23,28 @@ pub fn estimate(
         totals.output += u.output;
         totals.cache_read += u.cache_read;
         totals.cache_write += u.cache_write_5m + u.cache_write_1h;
-        if u.provider == Provider::OpenAI {
-            saw_openai = true;
-        }
         if u.model.is_empty() {
             saw_unknown_model = true;
         }
 
-        let price = store.lookup(&u.namespace, &u.model);
-        let subtotal = match price {
-            Some(p) => cost_for(p, u),
+        // A provider-reported native cost is ground truth — use it verbatim and
+        // skip list-price math entirely. The tier-assumption and unpriced-model
+        // signals only describe the list-price path, so they don't apply here.
+        let subtotal = match u.native_cost_usd {
+            Some(native) => native,
             None => {
-                if !unpriced.contains(&u.model) {
-                    unpriced.push(u.model.clone());
+                if u.provider == Provider::OpenAI {
+                    saw_openai = true;
                 }
-                0.0
+                match store.lookup(&u.namespace, &u.model) {
+                    Some(p) => cost_for(p, u),
+                    None => {
+                        if !unpriced.contains(&u.model) {
+                            unpriced.push(u.model.clone());
+                        }
+                        0.0
+                    }
+                }
             }
         };
         total_usd += subtotal;
@@ -101,6 +108,7 @@ mod tests {
             output: 1_000_000,
             request_input_tokens: 1_000_000,
             service_tier: Some("standard".into()),
+            native_cost_usd: None,
         }
     }
 
@@ -113,6 +121,35 @@ mod tests {
         assert_eq!(est.tokens.input, 1_000_000);
         assert!(est.unpriced_models.is_empty());
         assert_eq!(est.pricing_as_of, "2026-06-04");
+    }
+
+    #[test]
+    fn native_cost_overrides_list_price_and_suppresses_unpriced() {
+        // A provider-reported native cost is ground truth: it prices the call even
+        // when the model is absent from the tables, so it must not be flagged
+        // unpriced, and we must not claim a tier assumption we never made.
+        let mut u = opus_usage();
+        u.model = "made-up-model-xyz".into(); // not in the litellm-sample store
+        u.provider = Provider::OpenAI;
+        u.native_cost_usd = Some(1.69);
+        let est = estimate(&[u], &store(), PricingSource::Bundled);
+        assert!((est.total_usd - 1.69).abs() < 1e-9, "got {}", est.total_usd);
+        assert!(
+            est.unpriced_models.is_empty(),
+            "native cost means not unpriced: {:?}",
+            est.unpriced_models
+        );
+        assert_eq!(est.per_model.len(), 1);
+        assert!((est.per_model[0].subtotal_usd - 1.69).abs() < 1e-9);
+        assert!(
+            !est.approximations
+                .iter()
+                .any(|a| matches!(a, Approximation::AssumedStandardTier)),
+            "no list-price math happened, so no tier was assumed: {:?}",
+            est.approximations
+        );
+        // tokens still aggregate regardless of the cost source
+        assert_eq!(est.tokens.input, 1_000_000);
     }
 
     #[test]

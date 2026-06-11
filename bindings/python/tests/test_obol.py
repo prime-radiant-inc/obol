@@ -21,7 +21,7 @@ def seeded(monkeypatch):
 
 def test_version():
     import obol
-    assert obol.version() == "0.4.0"
+    assert obol.version() == "0.4.1"
 
 
 def test_estimate_path_matches_expectations(seeded):

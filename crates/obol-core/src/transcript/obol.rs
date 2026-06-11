@@ -95,6 +95,7 @@ fn parse_row(v: &Value, line: usize) -> Result<MessageUsage, ObolError> {
             .get("service_tier")
             .and_then(Value::as_str)
             .map(String::from),
+        native_cost_usd: None,
     })
 }
 
@@ -127,6 +128,7 @@ mod tests {
                     output: 9,
                     request_input_tokens: 192,
                     service_tier: Some("standard".into()),
+                    native_cost_usd: None,
                 },
                 MessageUsage {
                     model: "gpt-5.5".into(),
@@ -139,6 +141,7 @@ mod tests {
                     output: 25,
                     request_input_tokens: 100,
                     service_tier: None,
+                    native_cost_usd: None,
                 },
             ]
         );
