@@ -90,6 +90,14 @@ fn extract(msg: Option<&Value>, current_model: &str) -> Option<MessageUsage> {
         .or_else(|| nested("cache", "write"))
         .unwrap_or(0);
 
+    // Pi reports its own all-in cost per call (`usage.cost.total`). When present
+    // and sane, it's ground truth — preferred over list-price math downstream.
+    let native_cost_usd = usage
+        .get("cost")
+        .and_then(|c| c.get("total"))
+        .and_then(Value::as_f64)
+        .filter(|c| c.is_finite() && *c >= 0.0);
+
     let provider_str = msg.get("provider").and_then(Value::as_str).unwrap_or("");
     let (namespace, provider) = route(provider_str);
 
@@ -111,6 +119,7 @@ fn extract(msg: Option<&Value>, current_model: &str) -> Option<MessageUsage> {
         output,
         request_input_tokens: input + cache_read + cache_write,
         service_tier: None,
+        native_cost_usd,
     })
 }
 
@@ -180,6 +189,17 @@ mod tests {
         assert_eq!(u[2].provider, Provider::Anthropic);
         assert_eq!(u[2].model, "claude-opus-4-5");
         assert_eq!(u[2].input_uncached, 100);
+    }
+
+    #[test]
+    fn captures_native_cost_from_cost_total() {
+        let u = parse(include_bytes!("../../tests/fixtures/pi-session-mini.jsonl")).unwrap();
+        // openai-codex message carries usage.cost.total
+        assert_eq!(u[0].native_cost_usd, Some(0.0537));
+        // openrouter message: cost.total present
+        assert_eq!(u[1].native_cost_usd, Some(0.0007));
+        // anthropic message has no `cost` block -> fall back to list-price (None)
+        assert_eq!(u[2].native_cost_usd, None);
     }
 
     #[test]
