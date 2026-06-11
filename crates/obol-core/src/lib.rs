@@ -76,12 +76,36 @@ pub fn refresh_pricing_tables(as_of: &str) -> Result<RefreshReport, ObolError> {
     })
 }
 
+/// Test-only serialization for env-var-mutating tests, shared crate-wide.
+///
+/// Several tests mutate process-global env vars (OBOL_PRICING_DIR, XDG_DATA_HOME)
+/// and the on-disk snapshot they resolve to. Cargo runs them on multiple threads
+/// in one process, so without serialization they race across module boundaries:
+/// one test's `set_var` is torn down by another's `remove_var` mid-body, and a
+/// `store.save(current_path())` then lands in the developer's REAL
+/// ~/.local/share/obol — leaking a fixture snapshot (e.g. the 2099 stamp) that
+/// out-ranks every real one. Every test touching env holds this lock for its whole
+/// body. Because it spans modules (lib.rs + pricing/store.rs), it must live at the
+/// crate root, not inside one test module.
+#[cfg(test)]
+pub(crate) mod test_env {
+    use std::sync::{Mutex, MutexGuard};
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    pub(crate) fn env_lock() -> MutexGuard<'static, ()> {
+        // Recover rather than propagate if a prior test panicked while holding it;
+        // a poisoned lock must not cascade unrelated failures.
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 #[cfg(test)]
 mod api_tests {
     use super::*;
+    use crate::test_env::env_lock;
 
     #[test]
     fn estimate_cost_on_bytes_with_missing_tables_errors() {
+        let _env = env_lock();
         std::env::set_var("OBOL_PRICING_DIR", "/nonexistent/obol-xyz");
         let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
         std::fs::write(
@@ -99,6 +123,7 @@ mod api_tests {
 
     #[test]
     fn estimate_cost_end_to_end_with_seeded_store() {
+        let _env = env_lock();
         let dir = std::env::temp_dir().join(format!("obol-api-{}", std::process::id()));
         std::env::set_var("OBOL_PRICING_DIR", &dir);
         // seed the store from the sample sheet
@@ -126,6 +151,7 @@ mod api_tests {
 
     #[test]
     fn estimate_cost_from_path_then_detect() {
+        let _env = env_lock();
         let dir = std::env::temp_dir().join(format!("obol-path-{}", std::process::id()));
         std::env::set_var("OBOL_PRICING_DIR", &dir);
         let store = pricing::refresh::normalize_litellm(
@@ -153,6 +179,7 @@ mod api_tests {
 
     #[test]
     fn falls_back_to_embedded_when_no_local_snapshot() {
+        let _env = env_lock();
         // Force "no on-disk snapshot" hermetically: point XDG at an empty dir so
         // `current_path()` resolves to a nonexistent file and the embedded snapshot
         // is used. (Setting OBOL_PRICING_DIR instead would take the explicit-override
@@ -177,6 +204,7 @@ mod api_tests {
 
     #[test]
     fn explicit_override_uses_local_source() {
+        let _env = env_lock();
         let dir = std::env::temp_dir().join(format!("obol-resolve-{}", std::process::id()));
         std::env::set_var("OBOL_PRICING_DIR", &dir);
         let store = pricing::refresh::normalize_litellm(
@@ -200,7 +228,13 @@ mod api_tests {
 
     #[test]
     fn kimi_model_surfaces_unpriced_loudly() {
+        let _env = env_lock();
+        // Hermetic: point XDG at an empty dir so we price against the embedded
+        // snapshot, not whatever the developer happens to have refreshed locally.
+        let xdg = std::env::temp_dir().join(format!("obol-xdg-kimi-{}", std::process::id()));
+        std::fs::create_dir_all(&xdg).unwrap();
         std::env::remove_var("OBOL_PRICING_DIR");
+        std::env::set_var("XDG_DATA_HOME", &xdg);
         let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
         std::fs::write(
             &tmp,
@@ -215,10 +249,13 @@ mod api_tests {
             est.unpriced_models
         );
         std::fs::remove_file(&tmp).ok();
+        std::env::remove_var("XDG_DATA_HOME");
+        std::fs::remove_dir_all(&xdg).ok();
     }
 
     #[test]
     fn local_snapshot_with_invalid_as_of_loses_to_embedded() {
+        let _env = env_lock();
         // "junk-zzzz" sorts lexicographically above any ISO date, which is exactly
         // the bug: precedence must be decided by parsed stamps, not raw strings.
         let xdg = std::env::temp_dir().join(format!("obol-xdg-junk-{}", std::process::id()));
@@ -251,6 +288,7 @@ mod api_tests {
 
     #[test]
     fn local_datetime_stamp_beats_embedded_date() {
+        let _env = env_lock();
         let xdg = std::env::temp_dir().join(format!("obol-xdg-dt-{}", std::process::id()));
         std::fs::create_dir_all(&xdg).unwrap();
         std::env::remove_var("OBOL_PRICING_DIR");
@@ -277,6 +315,7 @@ mod api_tests {
 
     #[test]
     fn refresh_rejects_invalid_as_of_before_any_network_or_disk_io() {
+        let _env = env_lock();
         let xdg = std::env::temp_dir().join(format!("obol-xdg-rej-{}", std::process::id()));
         std::fs::create_dir_all(&xdg).unwrap();
         std::env::remove_var("OBOL_PRICING_DIR");
