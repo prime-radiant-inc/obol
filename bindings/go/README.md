@@ -40,13 +40,17 @@ rejected — point `OBOL_LIB` at a signed copy in that case.
 ```go
 import "github.com/prime-radiant-inc/obol-go" // or the in-repo package during development
 
-obol.Version() // "0.1.1" (the Rust core version)
+obol.Version() // "0.4.1" (the Rust core version)
 
 est, err := obol.EstimatePath("transcript.jsonl", "claude")
 // est.TotalUSD, est.PricingAsOf, est.PerModel[i].{Model,Provider,SubtotalUSD}
 
 report, err := obol.Refresh("2026-06-05") // refresh the on-disk pricing snapshot (network)
 ```
+
+The dialect is **required** — an empty string returns an `*ObolError` (`Kind ==
+"InvalidArgument"`), and there is no auto-detection. Known identifiers: `claude`, `codex`, `pi`,
+`gemini`, `opencode`, `copilot`, `kimi`, `obol`; an unknown one yields `Kind == "UnknownDialect"`.
 
 On a nonzero status the call returns an `*obol.ObolError` carrying `.Code`, `.Kind`, and
 `.Message` from the FFI error envelope.
