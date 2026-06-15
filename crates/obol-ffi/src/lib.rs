@@ -120,6 +120,7 @@ fn parse_dialect(dialect: *const c_char) -> Result<Dialect, ()> {
         .to_str()
         .map_err(|_| ())?;
     match s {
+        "atif" => Ok(Dialect::Atif),
         "claude" => Ok(Dialect::Claude),
         "codex" => Ok(Dialect::Codex),
         "pi" => Ok(Dialect::Pi),
@@ -340,6 +341,37 @@ mod tests {
         obol_string_free(out);
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(v["total_usd"].as_f64().unwrap() > 0.0, "{json}");
+        std::fs::remove_dir_all(&dir).ok();
+        std::env::remove_var("OBOL_PRICING_DIR");
+    }
+
+    #[test]
+    fn estimate_path_success_with_atif_dialect() {
+        let dir = seed_pricing();
+        let f = dir.join("trajectory.json");
+        std::fs::write(
+            &f,
+            include_bytes!("../../obol-core/tests/fixtures/atif-mini.json").as_slice(),
+        )
+        .unwrap();
+        let cpath = CString::new(f.to_str().unwrap()).unwrap();
+        let atif = CString::new("atif").unwrap();
+        let mut out = out_ptr();
+        let code = obol_estimate_path(cpath.as_ptr(), atif.as_ptr(), &mut out);
+        assert_eq!(code, OK, "code={code}");
+        let json = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
+        obol_string_free(out);
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v["total_usd"].as_f64().unwrap() > 0.0, "{json}");
+        // the unpriced model is surfaced through the FFI JSON, not silently dropped
+        assert!(
+            v["unpriced_models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m == "made-up-model-zzz"),
+            "{json}"
+        );
         std::fs::remove_dir_all(&dir).ok();
         std::env::remove_var("OBOL_PRICING_DIR");
     }

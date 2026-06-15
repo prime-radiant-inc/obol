@@ -10,11 +10,14 @@ The name is the coin paid as a toll — what the run cost you for passage.
 
 ## Status
 
-A Rust library (`obol-core`) + CLI (`obol`), plus language bindings. Eight transcript
-dialects: **Claude Code, Codex, Pi, Gemini, OpenCode, Copilot, Kimi**, and **obol** — our
+A Rust library (`obol-core`) + CLI (`obol`), plus language bindings. Nine transcript
+dialects: **Claude Code, Codex, Pi, Gemini, OpenCode, Copilot, Kimi**, **obol** — our
 own usage-sidecar format, a minimal `{"type":"obol.usage", …}` JSONL that in-house
 harnesses can emit to get priced without obol learning their transcript format (spec:
-[`docs/specs/2026-06-08-obol-usage-sidecar-design.md`](./docs/specs/2026-06-08-obol-usage-sidecar-design.md)).
+[`docs/specs/2026-06-08-obol-usage-sidecar-design.md`](./docs/specs/2026-06-08-obol-usage-sidecar-design.md)) —
+and **atif**, the ATIF (Agent Trajectory Interchange Format) `trajectory.json` that
+superpowers-evals normalizes every agent's session log into, so obol prices one stable
+canonical input instead of re-parsing each agent's raw log.
 
 Bindings reach the core through a small C ABI (`obol-ffi`, a cdylib) and re-type its JSON;
 they never re-implement the accounting:
@@ -45,7 +48,7 @@ A pricing snapshot is bundled into the binary, so `estimate` works out of the bo
 
 ```bash
 # Dialect is auto-detected; --dialect overrides
-# (claude | codex | pi | gemini | opencode | copilot | kimi | obol).
+# (atif | claude | codex | pi | gemini | opencode | copilot | kimi | obol).
 obol estimate ~/.claude/projects/<…>/<session>.jsonl
 obol estimate rollout-….jsonl --dialect codex --json
 

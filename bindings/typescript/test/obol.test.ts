@@ -11,6 +11,7 @@ import { setPricingDir, clearPricingDir } from "../src/index.ts";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TESTDATA = join(HERE, "..", "..", "testdata"); // test -> typescript -> bindings, then /testdata
 const TRANSCRIPT = join(TESTDATA, "claude-mini.jsonl");
+const ATIF_TRAJECTORY = join(TESTDATA, "atif-mini.json");
 
 async function seed(): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "obol-ts-"));
@@ -29,6 +30,20 @@ test("estimatePath success", async () => {
     const est = await obol.estimatePath(TRANSCRIPT, "claude");
     assert.ok(est.total_usd > 0, `total_usd=${est.total_usd}`);
     assert.equal(est.pricing_as_of, "2026-06-05");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    await clearPricingDir();
+  }
+});
+
+test("estimatePath atif dialect prices the trajectory", async () => {
+  const dir = await seed();
+  try {
+    const est = await obol.estimatePath(ATIF_TRAJECTORY, "atif");
+    // opus by rates (36.75) + gpt-5.5 embedded cost (0.5) + unpriced model (0) = 37.25
+    assert.ok(Math.abs(est.total_usd - 37.25) < 1e-9, `total_usd=${est.total_usd}`);
+    // the unpriced model is surfaced, never a silent $0
+    assert.ok(est.unpriced_models.includes("made-up-model-zzz"), JSON.stringify(est.unpriced_models));
   } finally {
     rmSync(dir, { recursive: true, force: true });
     await clearPricingDir();

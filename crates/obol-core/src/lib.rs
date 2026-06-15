@@ -150,6 +150,48 @@ mod api_tests {
     }
 
     #[test]
+    fn estimate_cost_atif_prices_disjoint_buckets_embedded_and_unpriced() {
+        let _env = env_lock();
+        let dir = std::env::temp_dir().join(format!("obol-atif-{}", std::process::id()));
+        std::env::set_var("OBOL_PRICING_DIR", &dir);
+        let store = pricing::refresh::normalize_litellm(
+            include_bytes!("../tests/fixtures/litellm-sample.json"),
+            "2026-06-04",
+        )
+        .unwrap();
+        store.save(&pricing::current_path()).unwrap();
+
+        let tmp = std::env::temp_dir().join(format!("obol-t-{}-{}", std::process::id(), line!()));
+        std::fs::write(
+            &tmp,
+            include_bytes!("../tests/fixtures/atif-mini.json").as_slice(),
+        )
+        .unwrap();
+        let est = estimate_cost(&tmp, Dialect::Atif).unwrap();
+
+        // opus by rates: 1M@5 + cache_read 1M@0.5 + cache_write 1M@6.25 + out 1M@25 = 36.75
+        // gpt-5.5 embedded cost: 0.5 verbatim. made-up-model-zzz: unpriced -> 0.
+        assert!(
+            (est.total_usd - 37.25).abs() < 1e-9,
+            "got {}",
+            est.total_usd
+        );
+        // The unpriced model is surfaced, never silently zero; the embedded-cost
+        // model is NOT unpriced (native cost is ground truth).
+        assert_eq!(
+            est.unpriced_models,
+            vec!["made-up-model-zzz".to_string()],
+            "{:?}",
+            est.unpriced_models
+        );
+        assert_eq!(est.pricing_as_of, "2026-06-04");
+        std::fs::remove_file(&tmp).ok();
+
+        std::fs::remove_dir_all(&dir).ok();
+        std::env::remove_var("OBOL_PRICING_DIR");
+    }
+
+    #[test]
     fn estimate_cost_from_path_then_detect() {
         let _env = env_lock();
         let dir = std::env::temp_dir().join(format!("obol-path-{}", std::process::id()));
