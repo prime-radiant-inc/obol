@@ -33,16 +33,24 @@ pub fn estimate(
         let subtotal = match u.native_cost_usd {
             Some(native) => native,
             None => {
-                if u.provider == Provider::OpenAI {
-                    saw_openai = true;
-                }
-                match store.lookup(&u.namespace, &u.model) {
-                    Some(p) => cost_for(p, u),
-                    None => {
-                        if !unpriced.contains(&u.model) {
-                            unpriced.push(u.model.clone());
+                // No model name means we cannot look up a rate; the
+                // `UnknownModelForTurn` approximation (set above) already
+                // signals this. Do NOT add the empty string to `unpriced` —
+                // that list is for named models obol couldn't price.
+                if u.model.is_empty() {
+                    0.0
+                } else {
+                    if u.provider == Provider::OpenAI {
+                        saw_openai = true;
+                    }
+                    match store.lookup(&u.namespace, &u.model) {
+                        Some(p) => cost_for(p, u),
+                        None => {
+                            if !unpriced.contains(&u.model) {
+                                unpriced.push(u.model.clone());
+                            }
+                            0.0
                         }
-                        0.0
                     }
                 }
             }
@@ -163,5 +171,36 @@ mod tests {
             .approximations
             .iter()
             .any(|a| matches!(a, Approximation::UnpricedModel(m) if m == "claude-opus-9-9")));
+    }
+
+    // Defect 1: a record with no model name (empty string) must NOT pollute
+    // `unpriced_models` with `""`.  The `UnknownModelForTurn` approximation
+    // already signals "we couldn't determine a model"; adding `""` to the
+    // named-model unpriced list makes it impossible for consumers to
+    // distinguish "model named empty string" from "no model captured".
+    // Tokens are still aggregated; cost is 0 (same as any unpriced model).
+    #[test]
+    fn empty_model_is_unknown_not_unpriced_named_model() {
+        let mut u = opus_usage();
+        u.model = "".into();
+        u.provider = Provider::Other(String::new());
+        u.native_cost_usd = None;
+        let est = estimate(&[u], &store(), PricingSource::Bundled);
+        assert_eq!(est.total_usd, 0.0, "no model => can't price => $0");
+        assert!(
+            est.unpriced_models.is_empty(),
+            "empty model must NOT appear in unpriced_models: {:?}",
+            est.unpriced_models
+        );
+        assert!(
+            est.approximations
+                .iter()
+                .any(|a| matches!(a, Approximation::UnknownModelForTurn)),
+            "UnknownModelForTurn must signal the missing model: {:?}",
+            est.approximations
+        );
+        // Tokens are preserved even though the model is unknown.
+        assert_eq!(est.tokens.input, 1_000_000);
+        assert_eq!(est.tokens.output, 1_000_000);
     }
 }
