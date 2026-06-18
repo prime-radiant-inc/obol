@@ -10,14 +10,14 @@ The name is the coin paid as a toll — what the run cost you for passage.
 
 ## Status
 
-A Rust library (`obol-core`) + CLI (`obol`), plus language bindings. Nine transcript
-dialects: **Claude Code, Codex, Pi, Gemini, OpenCode, Copilot, Kimi**, **obol** — our
-own usage-sidecar format, a minimal `{"type":"obol.usage", …}` JSONL that in-house
-harnesses can emit to get priced without obol learning their transcript format (spec:
+A Rust library (`obol-core`) + CLI (`obol`), plus language bindings. Two transcript
+dialects: **obol** — our own usage-sidecar format, a minimal `{"type":"obol.usage", …}`
+JSONL that in-house harnesses can emit to get priced without obol learning their transcript
+format (spec:
 [`docs/specs/2026-06-08-obol-usage-sidecar-design.md`](./docs/specs/2026-06-08-obol-usage-sidecar-design.md)) —
 and **atif**, the ATIF (Agent Trajectory Interchange Format) `trajectory.json` that
 superpowers-evals normalizes every agent's session log into, so obol prices one stable
-canonical input instead of re-parsing each agent's raw log.
+canonical input instead of per-agent raw-log parsing.
 
 Bindings reach the core through a small C ABI (`obol-ffi`, a cdylib) and re-type its JSON;
 they never re-implement the accounting:
@@ -47,10 +47,9 @@ One `vX.Y.Z` tag publishes every channel (see [`docs/RELEASING.md`](./docs/RELEA
 A pricing snapshot is bundled into the binary, so `estimate` works out of the box:
 
 ```bash
-# Dialect is auto-detected; --dialect overrides
-# (atif | claude | codex | pi | gemini | opencode | copilot | kimi | obol).
-obol estimate ~/.claude/projects/<…>/<session>.jsonl
-obol estimate rollout-….jsonl --dialect codex --json
+# Dialect is auto-detected; --dialect overrides (atif | obol).
+obol estimate trajectory.json
+obol estimate usage.jsonl --dialect obol --json
 
 # Optionally pull fresher prices (LiteLLM + OpenRouter). --as-of defaults to
 # the current UTC datetime; pass it explicitly to pin a stamp.
@@ -60,8 +59,7 @@ obol refresh --as-of 2026-06-09                  # or 2026-06-09T18:30:00Z
 
 Default output is a human total + per-model breakdown. `--json` emits the full
 `CostEstimate`, including `unpriced_models` (models with no price entry — surfaced, never a
-silent $0), `approximations` (e.g. an assumed standard service tier for Codex), and
-`pricing_source` (`bundled` or `local`).
+silent $0), `approximations`, and `pricing_source` (`bundled` or `local`).
 
 Price-sheet resolution: `$OBOL_PRICING_DIR`, if set, wins absolutely. Otherwise obol uses
 the newer (by `as_of`) of the refreshed on-disk snapshot (`$XDG_DATA_HOME/obol`, default

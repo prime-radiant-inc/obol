@@ -10,7 +10,7 @@ import { setPricingDir, clearPricingDir } from "../src/index.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TESTDATA = join(HERE, "..", "..", "testdata"); // test -> typescript -> bindings, then /testdata
-const TRANSCRIPT = join(TESTDATA, "claude-mini.jsonl");
+const OBOL_USAGE = join(TESTDATA, "obol-usage-mini.jsonl");
 const ATIF_TRAJECTORY = join(TESTDATA, "atif-mini.json");
 
 async function seed(): Promise<string> {
@@ -21,13 +21,13 @@ async function seed(): Promise<string> {
 }
 
 test("version", async () => {
-  assert.equal(await obol.version(), "0.5.1");
+  assert.equal(await obol.version(), "0.6.0");
 });
 
 test("estimatePath success", async () => {
   const dir = await seed();
   try {
-    const est = await obol.estimatePath(TRANSCRIPT, "claude");
+    const est = await obol.estimatePath(OBOL_USAGE, "obol");
     assert.ok(est.total_usd > 0, `total_usd=${est.total_usd}`);
     assert.equal(est.pricing_as_of, "2026-06-05");
   } finally {
@@ -54,7 +54,7 @@ test("missing tables -> ObolError code 1", async () => {
   await setPricingDir("/nonexistent/obol-ts-xyz");
   try {
     await assert.rejects(
-      () => obol.estimatePath(TRANSCRIPT, "claude"),
+      () => obol.estimatePath(OBOL_USAGE, "obol"),
       (e: unknown) => e instanceof obol.ObolError && e.code === 1 && e.kind === "PricingTablesMissing",
     );
   } finally {
@@ -79,7 +79,7 @@ test("unknown dialect -> ObolError code 7", async () => {
   const dir = await seed();
   try {
     await assert.rejects(
-      () => obol.estimatePath(TRANSCRIPT, "banana" as obol.Dialect),
+      () => obol.estimatePath(OBOL_USAGE, "banana" as obol.Dialect),
       (e: unknown) => e instanceof obol.ObolError && e.code === 7,
     );
   } finally {

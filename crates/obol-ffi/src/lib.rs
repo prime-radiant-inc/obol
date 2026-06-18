@@ -121,13 +121,6 @@ fn parse_dialect(dialect: *const c_char) -> Result<Dialect, ()> {
         .map_err(|_| ())?;
     match s {
         "atif" => Ok(Dialect::Atif),
-        "claude" => Ok(Dialect::Claude),
-        "codex" => Ok(Dialect::Codex),
-        "pi" => Ok(Dialect::Pi),
-        "gemini" => Ok(Dialect::Gemini),
-        "opencode" => Ok(Dialect::Opencode),
-        "copilot" => Ok(Dialect::Copilot),
-        "kimi" => Ok(Dialect::Kimi),
         "obol" => Ok(Dialect::Obol),
         _ => Err(()),
     }
@@ -304,16 +297,16 @@ mod tests {
     #[test]
     fn estimate_path_success_with_seeded_store() {
         let dir = seed_pricing();
-        let f = dir.join("session.jsonl");
+        let f = dir.join("usage.jsonl");
         std::fs::write(
             &f,
-            include_bytes!("../tests/fixtures/claude-mini.jsonl").as_slice(),
+            include_bytes!("../../obol-core/tests/fixtures/obol-usage-mini.jsonl").as_slice(),
         )
         .unwrap();
         let cpath = CString::new(f.to_str().unwrap()).unwrap();
-        let claude = CString::new("claude").unwrap();
+        let dialect = CString::new("obol").unwrap();
         let mut out = out_ptr();
-        let code = obol_estimate_path(cpath.as_ptr(), claude.as_ptr(), &mut out);
+        let code = obol_estimate_path(cpath.as_ptr(), dialect.as_ptr(), &mut out);
         assert_eq!(code, OK, "code={code}");
         let json = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
         obol_string_free(out);
@@ -394,9 +387,9 @@ mod tests {
     fn estimate_path_bad_path_is_io_error() {
         let dir = seed_pricing();
         let p = CString::new("/nonexistent/obol/transcript.jsonl").unwrap();
-        let claude = CString::new("claude").unwrap();
+        let dialect = CString::new("obol").unwrap();
         let mut out = out_ptr();
-        let code = obol_estimate_path(p.as_ptr(), claude.as_ptr(), &mut out);
+        let code = obol_estimate_path(p.as_ptr(), dialect.as_ptr(), &mut out);
         assert_eq!(code, ERR_IO, "code={code}");
         obol_string_free(out);
         std::fs::remove_dir_all(&dir).ok();

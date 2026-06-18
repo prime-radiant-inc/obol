@@ -21,12 +21,12 @@ def seeded(monkeypatch):
 
 def test_version():
     import obol
-    assert obol.version() == "0.5.1"
+    assert obol.version() == "0.6.0"
 
 
 def test_estimate_path_matches_expectations(seeded):
     import obol
-    est = obol.estimate_path(TESTDATA / "claude-mini.jsonl", dialect="claude")
+    est = obol.estimate_path(TESTDATA / "obol-usage-mini.jsonl", dialect="obol")
     assert est.total_usd > 0.0
     assert est.pricing_as_of == "2026-06-05"
     assert isinstance(est.tokens.input, int)
@@ -36,7 +36,7 @@ def test_missing_tables_raises(monkeypatch):
     import obol
     monkeypatch.setenv("OBOL_PRICING_DIR", "/nonexistent/obol-py-xyz")
     with pytest.raises(obol.ObolError) as ei:
-        obol.estimate_path(TESTDATA / "claude-mini.jsonl", dialect="claude")
+        obol.estimate_path(TESTDATA / "obol-usage-mini.jsonl", dialect="obol")
     assert ei.value.code == 1
     assert ei.value.kind == "PricingTablesMissing"
 

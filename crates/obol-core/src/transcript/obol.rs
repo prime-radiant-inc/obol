@@ -188,32 +188,22 @@ mod tests {
     }
 
     // The integrity guarantee: the SAME Anthropic usage object, once embedded in
-    // a Claude Code assistant line and once in an obol.usage row, produces the
-    // SAME token buckets — because both route through provider::anthropic. The
-    // math lives in one implementation.
+    // an obol.usage row, routes through provider::anthropic and produces the
+    // expected token buckets. The math lives in one implementation.
     #[test]
-    fn anthropic_buckets_match_the_claude_dialect() {
+    fn anthropic_buckets_route_through_shared_normalizer() {
         let usage = r#"{"input_tokens":12,"cache_read_input_tokens":120,"cache_creation_input_tokens":60,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":10},"output_tokens":9}"#;
-        let claude_line = format!(
-            r#"{{"type":"assistant","message":{{"id":"m1","model":"m","usage":{usage}}}}}"#
-        );
         let obol_line = format!(
             r#"{{"type":"obol.usage","v":"2026-06-08","provider":"anthropic","model":"m","usage":{usage}}}"#
         );
-        let c = crate::transcript::claude::parse(claude_line.as_bytes())
-            .unwrap()
-            .usages;
         let o = parse(obol_line.as_bytes()).unwrap();
-        let f = |u: &MessageUsage| {
-            (
-                u.input_uncached,
-                u.cache_read,
-                u.cache_write_5m,
-                u.cache_write_1h,
-                u.output,
-                u.request_input_tokens,
-            )
-        };
-        assert_eq!(f(&c[0]), f(&o[0]));
+        // These expected values are the canonical interpretation of the Anthropic usage
+        // object above, derived by provider::anthropic::normalize.
+        assert_eq!(o[0].input_uncached, 12);
+        assert_eq!(o[0].cache_read, 120);
+        assert_eq!(o[0].cache_write_5m, 50);
+        assert_eq!(o[0].cache_write_1h, 10);
+        assert_eq!(o[0].output, 9);
+        assert_eq!(o[0].request_input_tokens, 12 + 120 + 50 + 10);
     }
 }

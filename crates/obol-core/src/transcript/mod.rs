@@ -1,12 +1,5 @@
 pub mod atif;
-pub mod claude;
-pub mod codex;
-pub mod copilot;
-pub mod gemini;
-pub mod kimi;
 pub mod obol;
-pub mod opencode;
-pub mod pi;
 pub mod provider;
 
 use crate::error::ObolError;
@@ -16,19 +9,11 @@ use serde_json::Value;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
     Atif,
-    Claude,
-    Codex,
-    Copilot,
-    Gemini,
-    Kimi,
     Obol,
-    Opencode,
-    Pi,
 }
 
-/// Detect dialect from content: Codex lines carry a top-level `payload`
-/// (session_meta/response_item/event_msg); Claude lines carry `message` with
-/// type user/assistant.
+/// Detect dialect from content: `obol.usage` lines carry `{"type":"obol.usage",...}`;
+/// ATIF trajectories are a single-document JSON with a `schema_version` starting with "ATIF-".
 pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
     let text = std::str::from_utf8(bytes).map_err(|_| ObolError::UnknownDialect)?;
     for line in text.lines().take(20) {
@@ -40,33 +25,8 @@ pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
             Ok(v) => v,
             Err(_) => continue,
         };
-        if v.get("payload").is_some() {
-            return Ok(Dialect::Codex);
-        }
-        if matches!(
-            v.get("type").and_then(Value::as_str),
-            Some("session.shutdown") | Some("assistant.message") | Some("session.start")
-        ) {
-            return Ok(Dialect::Copilot);
-        }
-        if v.get("type").and_then(Value::as_str) == Some("usage.record") {
-            return Ok(Dialect::Kimi);
-        }
         if v.get("type").and_then(Value::as_str) == Some("obol.usage") {
             return Ok(Dialect::Obol);
-        }
-        if v.get("type").and_then(Value::as_str) == Some("session") {
-            return Ok(Dialect::Pi);
-        }
-        if v.get("type").and_then(Value::as_str) == Some("gemini")
-            || v.pointer("/$set/messages").is_some()
-            || (v.get("projectHash").is_some() && v.get("kind").is_some())
-        {
-            return Ok(Dialect::Gemini);
-        }
-        let ty = v.get("type").and_then(Value::as_str);
-        if matches!(ty, Some("user") | Some("assistant")) && v.get("message").is_some() {
-            return Ok(Dialect::Claude);
         }
     }
     // Single-document JSON formats (the line loop above can't see these).
@@ -79,9 +39,6 @@ pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
         {
             return Ok(Dialect::Atif);
         }
-        if doc.get("info").is_some() && doc.get("messages").is_some() {
-            return Ok(Dialect::Opencode);
-        }
     }
     Err(ObolError::UnknownDialect)
 }
@@ -89,34 +46,13 @@ pub fn detect(bytes: &[u8]) -> Result<Dialect, ObolError> {
 pub fn parse(bytes: &[u8], dialect: Dialect) -> Result<Vec<MessageUsage>, ObolError> {
     match dialect {
         Dialect::Atif => atif::parse(bytes),
-        Dialect::Claude => Ok(claude::parse(bytes)?.usages),
-        Dialect::Codex => codex::parse(bytes),
-        Dialect::Copilot => copilot::parse(bytes),
-        Dialect::Gemini => gemini::parse(bytes),
-        Dialect::Kimi => kimi::parse(bytes),
         Dialect::Obol => obol::parse(bytes),
-        Dialect::Opencode => opencode::parse(bytes),
-        Dialect::Pi => pi::parse(bytes),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn detects_claude_and_codex() {
-        let claude = include_bytes!("../../tests/fixtures/claude-mini.jsonl");
-        let codex = include_bytes!("../../tests/fixtures/codex-mini.jsonl");
-        assert_eq!(detect(claude).unwrap(), Dialect::Claude);
-        assert_eq!(detect(codex).unwrap(), Dialect::Codex);
-    }
-
-    #[test]
-    fn detects_pi() {
-        let pi = include_bytes!("../../tests/fixtures/pi-mini.jsonl");
-        assert_eq!(detect(pi).unwrap(), Dialect::Pi);
-    }
 
     #[test]
     fn detects_obol() {
