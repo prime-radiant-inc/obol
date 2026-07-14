@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, copyFileSync, rmSync } from "node:fs";
+import { mkdtempSync, copyFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,16 @@ async function seed(): Promise<string> {
 }
 
 test("version", async () => {
-  assert.equal(await obol.version(), "0.6.0");
+  // The binding reports the native lib's crate version; derive the
+  // expectation from the workspace manifest so a release bump can't strand
+  // a stale literal here (v0.7.0 broke CI exactly that way).
+  const manifest = readFileSync(
+    join(HERE, "..", "..", "..", "Cargo.toml"),
+    "utf8",
+  );
+  const expected = /^version\s*=\s*"([^"]+)"/m.exec(manifest)?.[1];
+  assert.ok(expected, "workspace Cargo.toml must declare a version");
+  assert.equal(await obol.version(), expected);
 });
 
 test("estimatePath success", async () => {

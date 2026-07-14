@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -21,7 +22,12 @@ def seeded(monkeypatch):
 
 def test_version():
     import obol
-    assert obol.version() == "0.6.0"
+    # The binding reports the native lib's crate version; derive the
+    # expectation from the workspace manifest so a release bump can't strand
+    # a stale literal here (v0.7.0 broke CI exactly that way).
+    manifest = (REPO / "Cargo.toml").read_text()
+    expected = re.search(r'^version\s*=\s*"([^"]+)"', manifest, re.M).group(1)
+    assert obol.version() == expected
 
 
 def test_estimate_path_matches_expectations(seeded):
