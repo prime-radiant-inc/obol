@@ -238,7 +238,10 @@ mod api_tests {
         .unwrap();
         let est = estimate_cost(&tmp, Dialect::Obol).unwrap();
         assert_eq!(est.pricing_source, crate::model::PricingSource::Bundled);
-        assert!(est.total_usd > 0.0, "embedded snapshot should price obol usage");
+        assert!(
+            est.total_usd > 0.0,
+            "embedded snapshot should price obol usage"
+        );
         std::fs::remove_file(&tmp).ok();
         std::env::remove_var("XDG_DATA_HOME");
         std::fs::remove_dir_all(&xdg).ok();

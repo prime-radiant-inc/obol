@@ -558,7 +558,11 @@ mod tests {
         }"#;
         let u = parse(line.as_bytes()).unwrap();
         // Only the two step records — no override injected when all steps priced.
-        assert_eq!(u.len(), 2, "no override record when all steps have cost: {u:?}");
+        assert_eq!(
+            u.len(),
+            2,
+            "no override record when all steps have cost: {u:?}"
+        );
         // Per-step costs preserved as-is.
         assert_eq!(u[0].native_cost_usd, Some(0.50));
         assert_eq!(u[1].native_cost_usd, Some(0.75));
