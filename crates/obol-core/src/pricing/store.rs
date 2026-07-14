@@ -138,6 +138,23 @@ mod tests {
     }
 
     #[test]
+    fn embedded_snapshot_prices_the_gpt_56_family() {
+        // Lookup is exact-match with no alias fallback, so every id a
+        // transcript can emit must be its own key (quorum pins gpt-5.6-sol).
+        let s = embedded().expect("embedded snapshot parses");
+        for m in ["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] {
+            assert!(
+                s.lookup("litellm", m).is_some(),
+                "embedded snapshot should price {m}"
+            );
+        }
+        let sol = s.lookup("litellm", "gpt-5.6-sol").unwrap();
+        assert!((sol.input - 5.0).abs() < 1e-9);
+        assert!((sol.output - 30.0).abs() < 1e-9);
+        assert!((sol.cache_read - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
     fn embedded_snapshot_bundles_litellm_and_openrouter() {
         let s = embedded().expect("embedded snapshot parses");
         assert!(

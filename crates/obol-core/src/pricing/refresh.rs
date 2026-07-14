@@ -178,6 +178,19 @@ mod tests {
     }
 
     #[test]
+    fn captures_gpt_56_sol_rates_and_tier() {
+        let s = sample();
+        let g = s.lookup("litellm", "gpt-5.6-sol").unwrap();
+        assert!((g.input - 5.0).abs() < 1e-9);
+        assert!((g.output - 30.0).abs() < 1e-9);
+        assert!((g.cache_read - 0.5).abs() < 1e-9);
+        assert!((g.cache_write - 6.25).abs() < 1e-9);
+        assert_eq!(g.tier_boundary, Some(272_000));
+        assert!((g.input_above.unwrap() - 10.0).abs() < 1e-9);
+        assert!((g.output_above.unwrap() - 45.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn normalizes_openrouter_per_million_no_tiers() {
         let t = normalize_openrouter(include_bytes!(
             "../../tests/fixtures/openrouter-sample.json"
