@@ -480,7 +480,7 @@ mod tests {
              "metrics":{"prompt_tokens":1000,"completion_tokens":500}}
           ],
           "final_metrics":{"total_prompt_tokens":1000,"total_completion_tokens":500,
-                           "total_cost_usd":3.14}
+                           "total_cost_usd":3.15}
         }"#;
         let u = parse(line.as_bytes()).unwrap();
         // Two records: the original step (tokens, native_cost suppressed to 0)
@@ -499,7 +499,7 @@ mod tests {
         assert_eq!(u[1].output, 0);
         assert_eq!(
             u[1].native_cost_usd,
-            Some(3.14),
+            Some(3.15),
             "the explicit final total must be carried on the override record"
         );
     }

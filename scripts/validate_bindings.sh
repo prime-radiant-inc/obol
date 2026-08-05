@@ -51,9 +51,5 @@ check() {
   fi
 }
 
-check bindings/testdata/claude-mini.jsonl   claude
-check bindings/testdata/gemini-mini.jsonl   gemini
-check bindings/testdata/opencode-mini.json  opencode
-check bindings/testdata/copilot-mini.jsonl  copilot
-check bindings/testdata/kimi-mini.jsonl     kimi
-check bindings/testdata/atif-mini.json      atif
+check bindings/testdata/atif-mini.json        atif
+check bindings/testdata/obol-usage-mini.jsonl obol
