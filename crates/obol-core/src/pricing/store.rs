@@ -155,6 +155,21 @@ mod tests {
     }
 
     #[test]
+    fn embedded_snapshot_prices_claude_opus_5() {
+        // Copilot reports the bare `claude-opus-5` id; lookup is exact-match
+        // with no alias fallback, so the bare key must be its own entry for
+        // the copilot grid's opus column to price.
+        let s = embedded().expect("embedded snapshot parses");
+        let opus = s
+            .lookup("litellm", "claude-opus-5")
+            .expect("embedded snapshot should price claude-opus-5");
+        assert!((opus.input - 5.0).abs() < 1e-9);
+        assert!((opus.output - 25.0).abs() < 1e-9);
+        assert!((opus.cache_read - 0.5).abs() < 1e-9);
+        assert!((opus.cache_write - 6.25).abs() < 1e-9);
+    }
+
+    #[test]
     fn embedded_snapshot_bundles_litellm_and_openrouter() {
         let s = embedded().expect("embedded snapshot parses");
         assert!(
