@@ -5,7 +5,7 @@ metadata:
   description: Read an AI-agent transcript and estimate what it cost — a Rust core with C-ABI bindings for Python, Go, and TypeScript.
   annotations:
     backstage.io/techdocs-ref: dir:.
-    prime-radiant.com/repo-map-rev: "426ad8ca8f386737a621d424b84e8d5678ce21aa"
+    prime-radiant.com/repo-map-rev: "37298a9f179a9b01568d88eb994a2299b00e650c"
   tags: [rust, ffi, cost-estimation, llm]
 spec:
   type: library

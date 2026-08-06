@@ -6,11 +6,11 @@ metadata:
   annotations:
     backstage.io/techdocs-ref: dir:.
     prime-radiant.com/about-url: https://github.com/prime-radiant-inc/obol/blob/main/bindings/go/ABOUT.md
-    prime-radiant.com/repo-map-rev: "07a98a2256e7470afb2acd585dc61a70561e8111"
+    prime-radiant.com/repo-map-rev: "37298a9f179a9b01568d88eb994a2299b00e650c"
   tags: [go, purego, cost-estimation]
 spec:
   type: library
-  lifecycle: experimental
+  lifecycle: production
   owner: user:mhat
   system: obol
   dependsOn:

@@ -2,7 +2,7 @@
 
 > Generated Go binding for obol — agent-transcript cost estimation, no cgo.
 
-**Family:** obol · **Type:** library · **Lifecycle:** experimental · **Owner:** mhat
+**Family:** obol · **Type:** library · **Lifecycle:** production · **Owner:** mhat
 
 ## What it does
 A Go module that wraps [obol](https://github.com/prime-radiant-inc/obol). It loads obol's
@@ -21,7 +21,7 @@ here, so `go get` resolves a self-contained module.
 
 ## Runtime & data
 - Runs: library (loaded into a Go host process)
-- Data in: agent transcript files
+- Data in: obol usage-sidecar JSONL or ATIF `trajectory.json`
 - Data out: per-session USD cost estimate
 
 ## Links
